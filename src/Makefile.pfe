@@ -1,0 +1,6 @@
+
+NAME=pfe
+FILES=pfe.o fatSupport.o
+
+include ../Makefile.targets
+

@@ -1,3 +1,8 @@
+# Makefile.targets
+
+# Required input variables:
+#   NAME  = the name of the output executable
+#   FILES = the list of .o files.
 
 # The compiler to use.
 CC=g++
@@ -9,21 +14,22 @@ CFLAGS=-c
 BINDIR=../bin
 OBJDIR=../obj
 
+# Prefix the list of .o files in FILES with the obj directory.
 OBJFILES= $(patsubst %,$(OBJDIR)/%,$(FILES))
 
-# fatTest executable.
+# Target for the executable named NAME.
 $(BINDIR)/$(NAME): $(OBJFILES) | $(BINDIR)
 	$(CC) ${OBJFILES} -o $(BINDIR)/$(NAME)
 
-# Targets for all .o files in the src/ directory.
+# Targets for all .o files in the src/directory.
 $(OBJDIR)/%.o: %.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-# Creates the obj/ directory.
+# Creates the obj directory.
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-# Creates the bin/ directory.
+# Creates the bin directory.
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
