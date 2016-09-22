@@ -5,10 +5,14 @@
  *           March, 2004.
  *****************************************************************************/
 
+#include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
+
+#include "fatSupport.h"
 
 // 13 is NOT the correct number -- you fix it!
-#define BYTES_TO_READ_IN_BOOT_SECTOR 13
+#define BYTES_TO_READ_IN_BOOT_SECTOR 64
 
 /******************************************************************************
  * You must set these global variables:
@@ -16,7 +20,7 @@
  *                      filesystem)
  *    BYTES_PER_SECTOR -- the number of bytes in each sector of the filesystem
  *
- * You may use these support functions (defined in FatSupport.c)
+ * You may use these support functions (defined in fatSupport.c)
  *    read_sector
  *    write_sector
  *    get_fat_entry
@@ -26,53 +30,51 @@
 FILE* FILE_SYSTEM_ID;
 int BYTES_PER_SECTOR;
 
-extern int read_sector(int sector_number, char* buffer);
-extern int write_sector(int sector_number, char* buffer);
-
-extern int  get_fat_entry(int fat_entry_number, char* fat);
-extern void set_fat_entry(int fat_entry_number, int value, char* fat);
 
 /******************************************************************************
  * main: an example of reading an item in the boot sector
  *****************************************************************************/
 
+#pragma pack(1)
+typedef struct
+{
+  char            ignore1[11];
+  unsigned short  bytesPerSector;
+  unsigned char   sectorsPerCluster;
+  unsigned short  numReservedSectors;
+
+  // TODO: Add the reset of the boot sector here...
+
+} BootSector;
+#pragma pack()
+
 int main()
 {
-   unsigned char* boot;            // example buffer
+  BootSector bootSector;
 
-   int mostSignificantBits;
-   int leastSignificantBits;
-   int bytesPerSector;
+  // Open the disk image file.
+  FILE_SYSTEM_ID = fopen("../disks/floppy1", "r+");
+  if (FILE_SYSTEM_ID == NULL)
+  {
+    printf("Could not open the floppy drive or image.\n");
+    return 1;
+  }
 
-   // You must set two global variables for the disk access functions:
-   //      FILE_SYSTEM_ID         BYTES_PER_SECTOR
+  // Set it to this only to read the boot sector, then reset it per the
+  // value in the boot sector.
+  BYTES_PER_SECTOR = sizeof(BootSector);
 
-   // Use this for an image of a floppy drive
-   FILE_SYSTEM_ID = fopen("floppy1", "r+");
+  // Read the part of the boot sector we care about.
+  if (read_sector(0, (unsigned char*) &bootSector) == -1)
+    printf("Something has gone wrong -- could not read the boot sector\n");
 
-   if (FILE_SYSTEM_ID == NULL)
-   {
-      printf("Could not open the floppy drive or image.\n");
-      exit(1);
-   }
+  // Now change this variable to the actual bytes-per-sector.
+  BYTES_PER_SECTOR = bootSector.bytesPerSector;
 
-   // Set it to this only to read the boot sector
-   BYTES_PER_SECTOR = BYTES_TO_READ_IN_BOOT_SECTOR;
+  // Print out some info about the boot sector.
+  printf("bytes per sector     = %d\n", bootSector.bytesPerSector);
+  printf("sectors per cluster  = %d\n", bootSector.sectorsPerCluster);
+  printf("num reserved sectors = %d\n", bootSector.numReservedSectors);
 
-   // Then reset it per the value in the boot sector
-
-   boot = (unsigned char*) malloc(BYTES_PER_SECTOR * sizeof(unsigned char));
-
-   if (read_sector(0, boot) == -1)
-      printf("Something has gone wrong -- could not read the boot sector\n");
-
- 
-   // 12 (not 11) because little endian
-   mostSignificantBits  = ( ( (int) boot[12] ) << 8 ) & 0x0000ff00;
-   leastSignificantBits =   ( (int) boot[11] )        & 0x000000ff;
-   bytesPerSector = mostSignificantBits | leastSignificantBits;
-	
-   printf("%d\n", bytesPerSector);
-
-   return 0;
+  return 0;
 }

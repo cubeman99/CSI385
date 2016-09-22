@@ -35,7 +35,7 @@ extern int BYTES_PER_SECTOR;
  * Return: the number of bytes read, or -1 if the read fails.
  *****************************************************************************/
 
-int read_sector(int sector_number, unsigned char* buffer)
+int read_sector(unsigned int sector_number, unsigned char* buffer)
 {
    int bytes_read;
 
@@ -70,7 +70,7 @@ int read_sector(int sector_number, unsigned char* buffer)
  * Return: the number of bytes written, or -1 if the read fails.
  ****************************************************************************/
 
-int write_sector(int sector_number, unsigned char* buffer) 
+int write_sector(unsigned int sector_number, unsigned char* buffer) 
 {
    int bytes_written;
 
@@ -106,7 +106,7 @@ int write_sector(int sector_number, unsigned char* buffer)
  * Return: the value at the specified entry of the given FAT
  ****************************************************************************/
 
-int get_fat_entry(int fat_entry_number, unsigned char* fat) 
+unsigned int get_fat_entry(unsigned int fat_entry_number, unsigned char* fat) 
 {
    int offset;
    int uv, wx, yz;
@@ -143,7 +143,7 @@ int get_fat_entry(int fat_entry_number, unsigned char* fat)
  * fat:  The fat table in which to set the given value at the specified entry
  *****************************************************************************/
 
-void set_fat_entry(int fat_entry_number, int value, unsigned char* fat) 
+void set_fat_entry(unsigned int fat_entry_number, unsigned int value, unsigned char* fat) 
 {
    int offset;
    int uv, wx, yz, a, b, c;

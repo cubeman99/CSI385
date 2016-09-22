@@ -1,0 +1,29 @@
+
+# The compiler to use.
+CC=g++
+
+# The Compiler options
+CFLAGS=-c
+
+# bin and obj directories
+BINDIR=../bin
+OBJDIR=../obj
+
+OBJFILES= $(patsubst %,$(OBJDIR)/%,$(FILES))
+
+# fatTest executable.
+$(BINDIR)/$(NAME): $(OBJFILES) | $(BINDIR)
+	$(CC) ${OBJFILES} -o $(BINDIR)/$(NAME)
+
+# Targets for all .o files in the src/ directory.
+$(OBJDIR)/%.o: %.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Creates the obj/ directory.
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+# Creates the bin/ directory.
+$(BINDIR):
+	mkdir -p $(BINDIR)
+
