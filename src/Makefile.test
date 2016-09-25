@@ -1,6 +1,0 @@
-
-NAME=fatTest
-FILES=fat.o fatSupport.o
-
-include ../Makefile.targets
-

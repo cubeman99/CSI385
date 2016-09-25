@@ -1,18 +1,21 @@
-/******************************************************************************
- * main: Sample for starting the FAT project.
+/*****************************************************************************
+ * Author: David Jordan & Joey Gallahan
+ * 
+ * Description: TODO
  *
- * Authors:  Andy Kinley, Archana Chidanandan, David Mutchler and others.
- *           March, 2004.
- *****************************************************************************/
+ * Certification of Authenticity:
+ * I certify that this assignment is entirely my own work.
+ ****************************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 
-#include "fatSupport.h"
+#include "fat.h"
 
 // 13 is NOT the correct number -- you fix it!
 #define BYTES_TO_READ_IN_BOOT_SECTOR 64
+
 
 /******************************************************************************
  * You must set these global variables:
@@ -29,52 +32,55 @@
 
 FILE* FILE_SYSTEM_ID;
 int BYTES_PER_SECTOR;
+BootSector FAT_BOOT_SECTOR;
 
 
 /******************************************************************************
- * main: an example of reading an item in the boot sector
+ * loadFAT12BootSector
  *****************************************************************************/
-
-#pragma pack(1)
-typedef struct
+int loadFAT12BootSector()
 {
-  char            ignore1[11];
-  unsigned short  bytesPerSector;
-  unsigned char   sectorsPerCluster;
-  unsigned short  numReservedSectors;
-
-  // TODO: Add the reset of the boot sector here...
-
-} BootSector;
-#pragma pack()
-
-int main()
-{
-  BootSector bootSector;
-
-  // Open the disk image file.
-  FILE_SYSTEM_ID = fopen("../disks/floppy1", "r+");
-  if (FILE_SYSTEM_ID == NULL)
-  {
-    printf("Could not open the floppy drive or image.\n");
-    return 1;
-  }
-
   // Set it to this only to read the boot sector, then reset it per the
   // value in the boot sector.
   BYTES_PER_SECTOR = sizeof(BootSector);
 
   // Read the part of the boot sector we care about.
-  if (read_sector(0, (unsigned char*) &bootSector) == -1)
-    printf("Something has gone wrong -- could not read the boot sector\n");
+  if (read_sector(0, (unsigned char*) &FAT_BOOT_SECTOR) == -1)
+	{
+		return -1;
+	}
 
   // Now change this variable to the actual bytes-per-sector.
-  BYTES_PER_SECTOR = bootSector.bytesPerSector;
-
-  // Print out some info about the boot sector.
-  printf("bytes per sector     = %d\n", bootSector.bytesPerSector);
-  printf("sectors per cluster  = %d\n", bootSector.sectorsPerCluster);
-  printf("num reserved sectors = %d\n", bootSector.numReservedSectors);
-
-  return 0;
+  BYTES_PER_SECTOR = FAT_BOOT_SECTOR.bytesPerSector;
+	
+	return 0;
 }
+
+/******************************************************************************
+ * readFAT12Table
+ *****************************************************************************/
+unsigned char* readFAT12Table(int fatIndex)
+{
+	// Allocate the FAT buffer.
+	unsigned char* buffer = (unsigned char*) malloc(BYTES_PER_SECTOR *
+		FAT_BOOT_SECTOR.sectorsPerFAT);
+
+	// Read the FAT table from the file.
+  if (read_sector(1 + fatIndex, buffer) == -1)
+	{
+		free(buffer);
+		return NULL;
+	}
+
+	return buffer;
+}
+
+/******************************************************************************
+ * freeFAT12Table
+ *****************************************************************************/
+void freeFAT12Table(unsigned char* fatTable)
+{
+	free(fatTable);
+}
+
+

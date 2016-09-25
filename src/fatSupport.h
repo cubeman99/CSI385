@@ -3,7 +3,6 @@
 #define _FAT_SUPPORT_H_
 
 
-
 int read_sector(unsigned int sector_number, unsigned char* buffer);
 int write_sector(unsigned int sector_number, unsigned char* buffer);
 
