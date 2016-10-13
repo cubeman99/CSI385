@@ -2,6 +2,7 @@
 #define _FAT_H_
 
 #include "fatSupport.h"
+#include <stdio.h>
 
 /*
  0 11 Ignore
