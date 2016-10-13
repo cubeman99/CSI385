@@ -1,0 +1,10 @@
+
+# Name of the program executable.
+NAME=shell
+
+# List of files to compile and link for this program.
+FILES=shell.o
+
+# This file must be included at the end.
+include ../Makefile.targets
+
