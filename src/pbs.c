@@ -30,11 +30,11 @@ int main()
 void printBootSector()
 {   
    char volumeLabel[12];
-   strcpy(volumeLabel, FAT_BOOT_SECTOR.volumeLabel);
+   memcpy(volumeLabel, FAT_BOOT_SECTOR.volumeLabel, 11);
    volumeLabel[11] = '\0';
    
    char fileSystemType[9];
-   strcpy(fileSystemType, FAT_BOOT_SECTOR.fileSystemType);
+   memcpy(fileSystemType, FAT_BOOT_SECTOR.fileSystemType, 8);
    fileSystemType[8] = '\0';
    
    printf("Bytes Per Sector: %d\n", FAT_BOOT_SECTOR.bytesPerSector);
@@ -46,8 +46,8 @@ void printBootSector()
    printf("Sectors Per Fat: %d\n", FAT_BOOT_SECTOR.sectorsPerFAT);
    printf("Sectors Per Track: %d\n", FAT_BOOT_SECTOR.sectorsPerTrack);
    printf("Number of Heads: %d\n", FAT_BOOT_SECTOR.numHeads);
-   printf("Boot Signature (hex): 0x%02x\n", FAT_BOOT_SECTOR.bootSignature);
-   printf("Volume ID (hex): 0x%06x\n", FAT_BOOT_SECTOR.volumeID);
+   printf("Boot Signature (hex): 0x%02X\n", FAT_BOOT_SECTOR.bootSignature);
+   printf("Volume ID (hex): 0x%06X\n", FAT_BOOT_SECTOR.volumeID);
    printf("Volume Label: %s\n", volumeLabel);
    printf("File System Type: %s\n", fileSystemType);
 }

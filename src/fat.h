@@ -4,27 +4,16 @@
 #include "fatSupport.h"
 #include <stdio.h>
 
-/*
- 0 11 Ignore
-11  2 Bytes per sector
-13  1 Sectors per cluster
-14  2 Number of reserved sectors
-16  1 Number of FATs
-17  2 Maximum number of root directory entries
-19  2 Total sector count1
-21  1 Ignore
-22  2 Sectors per FAT
-24  2 Sectors per track
-26  2 Number of heads
-28  4 Ignore
-32  4 Total sector count for FAT32 (0 for FAT12 and FAT16)
-36  2 Ignore
-38  1 Boot signature2
-39  4 Volume ID3
-43 11 Volume label
-54  8 File system type5 (e.g. FAT12, FAT16)
-62 -- Rest of boot sector (ignore)
-*/
+
+#define FAT12_MAX_FILE_NAME_LENGTH 12
+#define FAT12_MAX_DIRECTORY_DEPTH 32
+#define FAT12_MAX_PATH_NAME_LENGTH (12 * 32)
+
+#define WORKING_DIRECTORY_FILE_NAME "./cwd.txt"
+
+typedef unsigned char* FatTable;
+typedef char* Path;
+
 
 /******************************************************************************
  * BootSector - struct containing the data elements in the FAT boot sector.
@@ -60,7 +49,45 @@ typedef struct
 
 	// Rest of boot sector is ignored.
 
-} BootSector;
+} FatBootSector;
+
+typedef struct
+{
+	char           name[8];
+	char           extension[3];
+	unsigned char  attributes;
+	unsigned char  reserved[2];
+	unsigned short creationTime;
+	unsigned short creationDate;
+	unsigned short lastAccessDate;
+	unsigned char  ignored[2];
+	unsigned short lastWriteTime;
+	unsigned short lastWriteDate;
+	unsigned short firstLogicalCluster;
+	unsigned int   fileSize;
+} DirectoryEntry;
+
+typedef struct
+{
+  unsigned int depthLevel; // 1 = root directory
+  
+  struct
+  {
+	  unsigned int   indexInParentDirectory; // negligable for root directory
+	  unsigned short firstLogicalCluster;
+  } directoryLevels[FAT12_MAX_DIRECTORY_DEPTH];
+
+	char pathName[FAT12_MAX_PATH_NAME_LENGTH];  
+  
+} WorkingDirectory;
+
+typedef struct
+{
+	FatBootSector    bootSector;
+	FatTable         fatTable;
+	WorkingDirectory workingDirectory;
+} FatFileSystem;
+
 #pragma pack()
 
 /******************************************************************************
@@ -73,16 +100,26 @@ int loadFAT12BootSector();
  *****************************************************************************/
 unsigned char* readFAT12Table(int fatIndex);
 
-/******************************************************************************
+/************************ ******************************************************
  * freeFAT12Table
  *****************************************************************************/
 void freeFAT12Table(unsigned char* fatTable);
 
 
+
+int initializeFatFileSystem();
+int terminateFatFileSystem();
+int getFatBootSector(FatBootSector* bootSector);
+
+int loadWorkingDirectory();
+int saveWorkingDirectory();
+
 // Some global variables used by FAT functions.
-extern BootSector FAT_BOOT_SECTOR;
+extern FatBootSector FAT_BOOT_SECTOR;
 extern FILE* FILE_SYSTEM_ID;
 extern int BYTES_PER_SECTOR;
+
+extern FatFileSystem fatFileSystem;
 
 
 #endif //_FAT_H_
