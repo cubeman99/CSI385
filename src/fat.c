@@ -44,21 +44,6 @@ FatFileSystem fatFileSystem;
  *****************************************************************************/
 int loadFAT12BootSector()
 {
-/*
-  // Set it to this only to read the boot sector, then reset it per the
-  // value in the boot sector.
-  BYTES_PER_SECTOR = sizeof(FatBootSector);
-
-  // Read the part of the boot sector we care about.
-  if (read_sector(0, (unsigned char*) &FAT_BOOT_SECTOR) == -1)
-	{
-		return -1;
-	}
-
-  // Now change this variable to the actual bytes-per-sector.
-  BYTES_PER_SECTOR = FAT_BOOT_SECTOR.bytesPerSector;
-	*/
-
   // Set it to this only to read the boot sector, then reset it per the
   // value in the boot sector.
   BYTES_PER_SECTOR = sizeof(FatBootSector);
@@ -73,6 +58,20 @@ int loadFAT12BootSector()
   BYTES_PER_SECTOR = fatFileSystem.bootSector.bytesPerSector; 
 
   FAT_BOOT_SECTOR = fatFileSystem.bootSector;
+
+  // Calculate some sector offsets.
+	fatFileSystem.sectorOffsets.fatTables =
+	  fatFileSystem.bootSector.numReservedSectors;
+	
+  fatFileSystem.sectorOffsets.rootDirectory =
+    fatFileSystem.sectorOffsets.fatTables +
+    (fatFileSystem.bootSector.sectorsPerFAT *
+    fatFileSystem.bootSector.numFATs);
+    
+	fatFileSystem.sectorOffsets.dataRegion = 
+	  fatFileSystem.sectorOffsets.rootDirectory +
+	  ((fatFileSystem.bootSector.maxNumRootDirEntries * sizeof(DirectoryEntry)) /
+      fatFileSystem.bootSector.bytesPerSector);
 
 	return 0;
 }
@@ -108,10 +107,6 @@ void freeFAT12Table(unsigned char* fatTable)
 
 
 
-
-
-
-
 int initializeFatFileSystem()
 {
   // Open the disk image file.
@@ -136,11 +131,16 @@ int initializeFatFileSystem()
     printf("Something has gone wrong -- could not read the FAT table\n");
 		return 1;
 	}
-
+	
   loadWorkingDirectory();
 
+  return 0;
+}
 
-
+int terminateFatFileSystem()
+{
+	free(fatFileSystem.fatTable);
+  fclose(FILE_SYSTEM_ID);
   return 0;
 }
 
@@ -149,9 +149,8 @@ int loadWorkingDirectory()
   
   if (access(WORKING_DIRECTORY_FILE_NAME, F_OK) != -1)
   {
-    // file exists
-    printf("CWD exists\n");
-
+    // file exists.
+    
     FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "r");
 
     if (cwdFile == NULL)
@@ -169,17 +168,16 @@ int loadWorkingDirectory()
     if (pos != NULL)
         *pos = '\0';
 
-    // TODO: sConstruct the directory levels from the path.
+    // TODO: Construct the directory levels from the path.
     
 
-    printf("pwd = \"%s\"\n", fatFileSystem.workingDirectory.pathName);
+    //printf("pwd = \"%s\"\n", fatFileSystem.workingDirectory.pathName);
 
     fclose(cwdFile);
   }
   else
   {
-    // file doesn't exist
-    printf("CWD does NOT exist\n");
+    // file does not exist.
     
     // default to root directory.
     strcpy(fatFileSystem.workingDirectory.pathName, "/");
@@ -209,15 +207,9 @@ int saveWorkingDirectory()
   return 0;
 }
 
-int terminateFatFileSystem()
-{
-	free(fatFileSystem.fatTable);
-  fclose(FILE_SYSTEM_ID);
-  return 0;
-}
-
 int getFatBootSector(FatBootSector* bootSector)
 {
+  memcpy(bootSector, &fatFileSystem.bootSector, sizeof(FatBootSector));
   return 0;
 }
 

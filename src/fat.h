@@ -86,31 +86,40 @@ typedef struct
 	FatBootSector    bootSector;
 	FatTable         fatTable;
 	WorkingDirectory workingDirectory;
+	
+	struct
+	{
+	  unsigned short fatTables;
+	  unsigned short rootDirectory;
+	  unsigned short dataRegion;
+	} sectorOffsets;
+	
 } FatFileSystem;
 
 #pragma pack()
 
-/******************************************************************************
- * loadFAT12BootSector
- *****************************************************************************/
-int loadFAT12BootSector();
 
-/******************************************************************************
- * readFAT12Table
- *****************************************************************************/
-unsigned char* readFAT12Table(int fatIndex);
-
-/************************ ******************************************************
- * freeFAT12Table
- *****************************************************************************/
-void freeFAT12Table(unsigned char* fatTable);
-
-
-
+// FAT12 Functions.
 int initializeFatFileSystem();
 int terminateFatFileSystem();
 int getFatBootSector(FatBootSector* bootSector);
 
+char* getWorkingDirectoryPathName();
+int getWorkingDirectory(DirectoryEntry* entry);
+int changeWorkingDirectory(const char* pathName);
+int findDirectoryEntry(char* pathName, DirectoryEntry* entry);
+
+int readLogicalClusterChain(int firstLogicalCluster,
+                            unsigned char** dataPtr,
+                            unsigned int* numBytes);
+int readFileData(DirectoryEntry* entry,
+                 unsigned char** dataPtr,
+                 unsigned int* numBytes);
+
+// Internal functions:
+int loadFAT12BootSector();
+unsigned char* readFAT12Table(int fatIndex);
+void freeFAT12Table(unsigned char* fatTable);
 int loadWorkingDirectory();
 int saveWorkingDirectory();
 

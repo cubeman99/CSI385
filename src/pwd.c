@@ -27,15 +27,19 @@ static void usage()
 void printDir(unsigned int sector, int depth)
 {
   unsigned char bytes[BYTES_PER_SECTOR];
-  unsigned int ss = sector;
-  if (sector == 0)
-    ss = 1 + fatFileSystem.bootSector.sectorsPerFAT * 2;
+  
+  // Translate logical sector number into physical sector number.
+  unsigned int physicalSector = sector;
+  if (physicalSector == 0)
+    physicalSector = fatFileSystem.sectorOffsets.rootDirectory;
   else
-    ss = 33 + sector - 2;
-  read_sector(ss, bytes);
+    physicalSector = fatFileSystem.sectorOffsets.dataRegion + sector - 2;
+      
+  read_sector(physicalSector, bytes);
 
   DirectoryEntry* dir = (DirectoryEntry*) bytes;
 
+  // Print the contents of the directory.
   int i, k;
   for (k = 0; k < 20; k++)	
   {
@@ -60,22 +64,20 @@ void printDir(unsigned int sector, int depth)
     }
     else if (dir[k].attributes == 0x0F)
     {
-      // Long filename
+      // Long filename, ignore.
     }
     else
     {   
       for (i = 0; i < depth; i++)
         printf("   ");
-
-
+        
       int isSubDir = (dir[k].attributes & 0x10);
-
       if (isSubDir)
         printf("* ");
       else
         printf("- ");
-      //printf("%d: ", k);  
 
+      // Print the file name.
       for (i = 0; i < 8; i++)
       {
         if (dir[k].name[i] == ' ')
@@ -93,6 +95,7 @@ void printDir(unsigned int sector, int depth)
         }
       }
 
+      // Print any attributes
       if (dir[k].attributes & 0x01)
         printf(" (read-only)");
       if (dir[k].attributes & 0x02)
@@ -102,6 +105,7 @@ void printDir(unsigned int sector, int depth)
 
       if (isSubDir)
       {
+        // Recursively print the sub-directory's contents.
         printf(" (%u)\n", dir[k].firstLogicalCluster);
         if (k >= 2 || sector == 0)
           printDir(dir[k].firstLogicalCluster, depth + 1);
@@ -122,8 +126,10 @@ int main(int argc, char* argv[])
 {
   initializeFatFileSystem();
 
-  printf("sz = %u\n", sizeof(DirectoryEntry));
-
+  printf("fatTables  = %u\n", fatFileSystem.sectorOffsets.fatTables);
+  printf("rootDir    = %u\n", fatFileSystem.sectorOffsets.rootDirectory);
+  printf("dataRegion = %u\n", fatFileSystem.sectorOffsets.dataRegion);
+      
   printDir(0, 0);
 
   terminateFatFileSystem();
