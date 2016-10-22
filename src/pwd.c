@@ -28,7 +28,7 @@ void printDir(unsigned int sector, int depth)
 {
   unsigned char bytes[BYTES_PER_SECTOR];
   
-  // Translate logical sector number into physical sector number.
+  // Translate logical cluster number into physical sector number.
   unsigned int physicalSector = sector;
   if (physicalSector == 0)
     physicalSector = fatFileSystem.sectorOffsets.rootDirectory;
@@ -125,12 +125,10 @@ void printDir(unsigned int sector, int depth)
 int main(int argc, char* argv[])
 {
   initializeFatFileSystem();
-
-  printf("fatTables  = %u\n", fatFileSystem.sectorOffsets.fatTables);
-  printf("rootDir    = %u\n", fatFileSystem.sectorOffsets.rootDirectory);
-  printf("dataRegion = %u\n", fatFileSystem.sectorOffsets.dataRegion);
-      
-  printDir(0, 0);
+  
+  printf("%s\n", getWorkingDirectoryPathName()); 
+       
+  //printDir(0, 0);
 
   terminateFatFileSystem();
   return 0;

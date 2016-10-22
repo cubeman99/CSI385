@@ -69,13 +69,15 @@ typedef struct
 
 typedef struct
 {
+  unsigned int   indexInParentDirectory; // negligable for root directory
+	unsigned short firstLogicalCluster;
+} DirectoryLevel;
+
+typedef struct
+{
   unsigned int depthLevel; // 1 = root directory
   
-  struct
-  {
-	  unsigned int   indexInParentDirectory; // negligable for root directory
-	  unsigned short firstLogicalCluster;
-  } directoryLevels[FAT12_MAX_DIRECTORY_DEPTH];
+  DirectoryLevel dirLevels[FAT12_MAX_DIRECTORY_DEPTH];
 
 	char pathName[FAT12_MAX_PATH_NAME_LENGTH];  
   
@@ -104,10 +106,12 @@ int initializeFatFileSystem();
 int terminateFatFileSystem();
 int getFatBootSector(FatBootSector* bootSector);
 
-char* getWorkingDirectoryPathName();
+const char* getWorkingDirectoryPathName();
 int getWorkingDirectory(DirectoryEntry* entry);
 int changeWorkingDirectory(const char* pathName);
 int findDirectoryEntry(char* pathName, DirectoryEntry* entry);
+int findDirectoryEntryByName(int firstLogicalCluster, DirectoryEntry* entry, int* index, const char* name);
+int entryToString(DirectoryEntry* entry, char* string);
 
 int readLogicalClusterChain(int firstLogicalCluster,
                             unsigned char** dataPtr,
