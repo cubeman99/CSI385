@@ -146,52 +146,41 @@ int terminateFatFileSystem()
 
 int loadWorkingDirectory()
 {
-  char path[FAT12_MAX_PATH_NAME_LENGTH];
-
-  // default to root directory.
+  // Always start at the root directory.
   fatFileSystem.workingDirectory.depthLevel = 1;
   fatFileSystem.workingDirectory.dirLevels[0].indexInParentDirectory = 0;
   fatFileSystem.workingDirectory.dirLevels[0].firstLogicalCluster = 0;
+  fatFileSystem.workingDirectory.dirLevels[0].offsetInPathName = 1;
+  strcpy(fatFileSystem.workingDirectory.pathName, "/");
 	
+	// Load the current working directory from file.
   if (access(WORKING_DIRECTORY_FILE_NAME, F_OK) != -1)
   {
-    // file exists.
-    
+    // The file exists, open it.
     FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "r");
-
     if (cwdFile == NULL)
 	  {
       printf("Could not initialze current working directory.\n");
-      return 1;
+      return -1;
     }
 
     // Read the path name from the file.
-    fgets(path,
-      sizeof(path), cwdFile);
+    char path[FAT12_MAX_PATH_NAME_LENGTH];
+    fgets(path, sizeof(path), cwdFile);
 
     // Remove the newline character from the end of the path name.
     char *pos = strchr(path, '\n');
     if (pos != NULL)
-        *pos = '\0';
+      *pos = '\0';
 
-    // TODO: Construct the directory levels from the path.
-	printf("Path:%s\n", path);
+    // Change the working directory using the read path name.
     changeWorkingDirectory(path);
-
-    //printf("pwd = \"%s\"\n", fatFileSystem.workingDirectory.pathName);
 
     fclose(cwdFile);
   }
   else
   {
-    // file does not exist.
-    
-    // default to root directory.
-    strcpy(fatFileSystem.workingDirectory.pathName, "/");
-    fatFileSystem.workingDirectory.depthLevel = 1;
-    fatFileSystem.workingDirectory.dirLevels[0].indexInParentDirectory = 0;
-    fatFileSystem.workingDirectory.dirLevels[0].firstLogicalCluster = 0;
-
+    // The file does not exist, save a new one.
     saveWorkingDirectory();
   }
 
@@ -216,61 +205,102 @@ int saveWorkingDirectory()
 
 int getFatBootSector(FatBootSector* bootSector)
 {
-  memcpy(bootSector, &fatFileSystem.bootSector, sizeof(FatBootSector));
-  return 0;
+   memcpy(bootSector, &fatFileSystem.bootSector, sizeof(FatBootSector));
+   return 0;
 }
 
 int changeWorkingDirectory(const char* pathName)
 {
-/*
+  WorkingDirectory newWorkingDir = fatFileSystem.workingDirectory;
+
+  char* path = newWorkingDir.pathName;
+
   if (pathName[0] == '/')
   {
-
+    // Absolute path: start at the root directory.
+    newWorkingDir.depthLevel = 1;
+    newWorkingDir.dirLevels[0].indexInParentDirectory = 0;
+    newWorkingDir.dirLevels[0].firstLogicalCluster = 0;
+    newWorkingDir.dirLevels[0].offsetInPathName = 1;
+    strcpy(newWorkingDir.pathName, "/");
   }
   else
   {
-*/
-    char* path = fatFileSystem.workingDirectory.pathName;
-    char* token;
+    path += strlen(newWorkingDir.pathName);
+  }
 
-    char* pathString = (char*) malloc(strlen(pathName) + 1);
-    strcpy(pathString, pathName);
-    token = strtok(pathString, "/");
-    
-    int counter = 0;
-    DirectoryEntry dir;
+  char* token;
 
-    WorkingDirectory *workingDir = &fatFileSystem.workingDirectory;
-    DirectoryLevel *dirLevels = &workingDir->dirLevels[workingDir->depthLevel];
-    int index;
+   char* pathString = (char*) malloc(strlen(pathName) + 1);
+   strcpy(pathString, pathName);
+   token = strtok(pathString, "/");
+
+   int counter = 0;
+   DirectoryEntry dir;
+
+   DirectoryLevel *dirLevels = &newWorkingDir.dirLevels[newWorkingDir.depthLevel - 1];
+   int index;
+   int rc;
+   int i;
+
+   while (token != NULL)
+   {
+    rc = findDirectoryEntryByName(dirLevels->firstLogicalCluster,
+                                  &dir, &index, token);
     
-    while (token != NULL)
+    if (rc != 0)
     {
-       strcpy(path, token);
-       path += strlen(token);
+      printf("%s: No such file or directory\n", pathName);
+      return 1;
+    } 
+    else if (!(dir.attributes & 0x10))
+    {
+      printf("%s: Not a directory\n", pathName);
+      return 2;
+    }
+    else
+    {
+       // We found the directory.
+       dirLevels++;
+       newWorkingDir.depthLevel++;
+       dirLevels->firstLogicalCluster = dir.firstLogicalCluster;
+       dirLevels->indexInParentDirectory = index;
+       dirLevels->offsetInPathName = strlen(newWorkingDir.pathName) + 1;
+       
+       // Add the directory name to the absolute working dir path name.
        *path = '/';
        path++;
-       if (findDirectoryEntryByName(dirLevels->firstLogicalCluster, &dir, &index,
-                                    token) == 0)
-       {
-          //we found it
-          dirLevels++;
-          workingDir->depthLevel++;
-          dirLevels->indexInParentDirectory = index;
-          dirLevels->firstLogicalCluster = dir.firstLogicalCluster;       
-          printf("Directory found: %s, %i, %i\n", token, index, dirLevels->firstLogicalCluster);   
-       }
-       else
-       {
-          printf("Directory %s doesn't exist\n", token);
-          return 1;
-       }
-       token = strtok(NULL, "/");
-       counter++;       
-    }    
-    *(path-1) = '\0';    
-  //}
-   saveWorkingDirectory();
+       strcpy(path, token);
+       path += strlen(token);
+
+        // TODO: Remove path redundancies (. and ..)
+        for (i = 0; i < newWorkingDir.depthLevel - 1; i++)
+        {
+          if (dir.firstLogicalCluster == newWorkingDir.dirLevels[i].firstLogicalCluster)
+          {
+            printf("Redundancy %d: ", i);
+            printf("%s -> ", newWorkingDir.pathName);
+            newWorkingDir.depthLevel = i + 1;
+            dirLevels = &newWorkingDir.dirLevels[i];
+            path = newWorkingDir.pathName + newWorkingDir.dirLevels[i + 1].offsetInPathName;
+            *path = '\0';
+            printf("%s\n", newWorkingDir.pathName);
+            // printf("%s, %s\n", newWorkingDir.pathName,
+            //   newWorkingDir.pathName + newWorkingDir.dirLevels[i + 1].offsetInPathName);
+            break;
+          }
+        }
+       
+       //printf("Directory found: %s, %i, %i\n", token, index, dirLevels->firstLogicalCluster);   
+    }
+
+    token = strtok(NULL, "/");
+    counter++;       
+   }
+
+  fatFileSystem.workingDirectory = newWorkingDir;
+  printf("%s\n", fatFileSystem.workingDirectory.pathName);
+  saveWorkingDirectory();
   return 0;
 }
 
@@ -279,32 +309,40 @@ const char* getWorkingDirectoryPathName()
   return fatFileSystem.workingDirectory.pathName;
 }
 
-int readLogicalClusterChain(int firstLogicalCluster,
+int readLogicalClusterChain(unsigned short firstLogicalCluster,
                             unsigned char** dataPtr,
                             unsigned int* numBytes)
 { 
   *dataPtr = (unsigned char*) malloc(fatFileSystem.bootSector.bytesPerSector);
   
-  // Translate logical cluster number into physical sector number.
-  unsigned int physicalSector = firstLogicalCluster;
-  if (physicalSector == 0)
-    physicalSector = fatFileSystem.sectorOffsets.rootDirectory;
+  // Translate logical cluster number into physical cluster number.
+  unsigned int physicalCluster = firstLogicalCluster;
+  if (physicalCluster == 0)
+    physicalCluster = fatFileSystem.sectorOffsets.rootDirectory;
   else
-    physicalSector = fatFileSystem.sectorOffsets.dataRegion + firstLogicalCluster - 2;
-      
-  read_sector(physicalSector, *dataPtr);
+    physicalCluster = fatFileSystem.sectorOffsets.dataRegion + firstLogicalCluster - 2;
+  
+  // TODO: Read the whole cluster chain.
+  read_sector(physicalCluster, *dataPtr);
+
   return 0;
 }
 
-int findDirectoryEntryByName(int firstLogicalCluster, DirectoryEntry* entry, int* index, const char* name)
+int findDirectoryEntryByName(unsigned short firstLogicalCluster,
+                             DirectoryEntry* entry,
+                             int* index,
+                             const char* name)
 {
   unsigned char* dataPtr;
   unsigned int numBytes;
   char fileName[FAT12_MAX_FILE_NAME_LENGTH];
+  int k;
+  
+  // Read the directory's data containing its directory entries.
   readLogicalClusterChain(firstLogicalCluster, &dataPtr, &numBytes);
   DirectoryEntry* dir = (DirectoryEntry*) dataPtr; 
   
-  int i, k;
+  // Loop through the directory entry's, searching by name.
   for (k = 0; k < 20; k++)	
   {
     if ((unsigned char) dir[k].name[0] == 0xE5)
@@ -325,42 +363,51 @@ int findDirectoryEntryByName(int firstLogicalCluster, DirectoryEntry* entry, int
     {                 
       int isSubDir = (dir[k].attributes & 0x10);
       entryToString(&dir[k], fileName);
-      if (strcmp(fileName, name) == 0)
+      
+      // Check if we found the entry.
+      if (strcasecmp(fileName, name) == 0)
       {
-        //yay
         *index = k;
         *entry = dir[k];
+        free(dataPtr);
         return 0;
       }
     }   
   } 
   
- // free(dataPtr);
+  free(dataPtr);
   return -1;
 }
 
 int entryToString(DirectoryEntry* entry, char* string)
 {
   memset(string, 0, FAT12_MAX_FILE_NAME_LENGTH);
-  // Print the file name.
+
   int counter = 0;
   int i;
-  for (i = 0; i < 8; i++)
+  const int nameLength = 8;
+  const int extLength = 3;
+
+  // Grab the name.
+  for (i = 0; i < nameLength; i++)
   {
     if (entry->name[i] == ' ')
       break;
     string[counter++] = entry->name[i];
-   }
-   if (entry->extension[0] != ' ')
-   {
-     string[counter++] = '.';
-     for (i = 0; i < 3; i++)
-     {
-        if (entry->extension[i] == ' ')
-          break;
-        string[counter++] = entry->extension[i];
-     }
-   }
+  }
+
+  // Grab the extension.
+  if (entry->extension[0] != ' ')
+  {
+    string[counter++] = '.';
+    for (i = 0; i < extLength; i++)
+    {
+      if (entry->extension[i] == ' ')
+        break;
+      string[counter++] = entry->extension[i];
+    }
+  }
+
   return 0;
 }
 

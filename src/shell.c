@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "fat.h"
 
 #define FALSE 0
 #define TRUE 1
@@ -22,6 +23,8 @@ void readCommand(char* command, char** params);
 
 int main()
 {
+   initializeFatFileSystem();
+  
    char command[32];
    char* params[32];
    int status;
@@ -55,12 +58,17 @@ int main()
       }
    }   
 
+   terminateFatFileSystem();
    return 0;
 }
 
 void displayPrompt()
 {
-   printf("Enter a command: ");
+  //loadWorkingDirectory();
+  //TODO: Make the prompt show the working directory.
+  // printf("%s $ \n", getWorkingDirectoryPathName());
+
+  printf("Enter a command: ");
 }
 
 void readCommand(char* command, char** params)

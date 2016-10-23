@@ -71,6 +71,7 @@ typedef struct
 {
   unsigned int   indexInParentDirectory; // negligable for root directory
 	unsigned short firstLogicalCluster;
+   unsigned int offsetInPathName;
 } DirectoryLevel;
 
 typedef struct
@@ -109,11 +110,17 @@ int getFatBootSector(FatBootSector* bootSector);
 const char* getWorkingDirectoryPathName();
 int getWorkingDirectory(DirectoryEntry* entry);
 int changeWorkingDirectory(const char* pathName);
-int findDirectoryEntry(char* pathName, DirectoryEntry* entry);
-int findDirectoryEntryByName(int firstLogicalCluster, DirectoryEntry* entry, int* index, const char* name);
-int entryToString(DirectoryEntry* entry, char* string);
+int findDirectoryEntry(char* pathName,
+                       DirectoryEntry* entry);
 
-int readLogicalClusterChain(int firstLogicalCluster,
+
+int findDirectoryEntryByName(unsigned short firstLogicalCluster,
+                             DirectoryEntry* entry,
+                             int* index,
+                             const char* name);
+int entryToString(DirectoryEntry* entry,
+                  char* string);
+int readLogicalClusterChain(unsigned short firstLogicalCluster,
                             unsigned char** dataPtr,
                             unsigned int* numBytes);
 int readFileData(DirectoryEntry* entry,
