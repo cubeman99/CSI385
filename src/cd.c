@@ -19,10 +19,8 @@
  *****************************************************************************/
 int main(int argc, char* argv[])
 {
-  initializeFatFileSystem();
-  
+  initializeFatFileSystem();  
   changeWorkingDirectory(argv[1]);
-
   terminateFatFileSystem();
   return 0;
 }

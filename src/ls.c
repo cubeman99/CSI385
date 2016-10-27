@@ -15,50 +15,70 @@
 
 #include "fat.h"
 
-int listDirectoryContents();
+int listDirectoryContents(int numArgs, char* path);
 void printDir(unsigned int sector, int depth);
 
-int main()
+int main(int argc, char* argv[])
 {
   initializeFatFileSystem();
-  listDirectoryContents();
+  listDirectoryContents(argc-1, argv[1]);
   terminateFatFileSystem();
   return 0;
 }
 
 //ls command
-int listDirectoryContents()
+int listDirectoryContents(int numArgs, char* path)
 {
-  if (loadWorkingDirectory() != 0)
-  {
-    printf("Could not load working directory.\n");
-    return -1;
-  }
- 
   WorkingDirectory workingDir = fatFileSystem.workingDirectory;
-  DirectoryLevel levels = workingDir.dirLevels[workingDir.depthLevel - 1];
+  char* pathName = workingDir.pathName;
+  DirectoryLevel levels;
   unsigned char* dataPtr;
-  unsigned short firstLogicalCluster = levels.firstLogicalCluster;
+  unsigned short firstLogicalCluster;
   unsigned int numBytes;  
   
   // Read the directory's data containing its directory entries.
-  readLogicalClusterChain(firstLogicalCluster, &dataPtr, &numBytes);
-  DirectoryEntry* dir = (DirectoryEntry*) dataPtr; 
-  char* fileName;
-
-  printf("Name%-10sType%-10sSize%-10sFLC\n", "", "", "");
-  printDir(firstLogicalCluster, levels.indexInParentDirectory);
+  DirectoryEntry* dir = (DirectoryEntry*) dataPtr;
+  if (numArgs == 1)
+  {
+    if (changeWorkingDirectory(path) == 0)
+    {
+      WorkingDirectory newWorkingDir = fatFileSystem.workingDirectory;
+      levels = newWorkingDir.dirLevels[newWorkingDir.depthLevel - 1];
+      firstLogicalCluster = levels.firstLogicalCluster;
+      printDir(firstLogicalCluster, levels.indexInParentDirectory);
+      changeWorkingDirectory(pathName);  
+    }
+  }  
+  else if (numArgs > 1)
+  {
+    printf("Error: Too many arguments.\n");
+    return -1;
+  }
+  else
+  {
+    if (loadWorkingDirectory() != 0)
+    {
+      printf("Error: Could not load working directory.\n");
+      return -1;
+    }
+    levels = workingDir.dirLevels[workingDir.depthLevel - 1];
+    firstLogicalCluster = levels.firstLogicalCluster;
+    printDir(firstLogicalCluster, levels.indexInParentDirectory);
+  }
 }
 
 void printDir(unsigned int sector, int depth)
 {
   unsigned char bytes[BYTES_PER_SECTOR];
   
-  char name[12];
-  char extension[4];
+  char name[9];
+  char extension[5];
   char* type;
   unsigned int size;
   unsigned int FLC;
+  
+  printf("Name%-10sType%-10sSize%-10sFLC\n", "", "", "");
+  printf("---------------------------------------------\n");
   
   // Translate logical cluster number into physical sector number.
   unsigned int physicalSector = sector;
@@ -147,16 +167,18 @@ void printDir(unsigned int sector, int depth)
           extension[i+1] = dir[k].extension[i];
         }    
         
+        extension[4] = '\0';
+        
         //Put the name and extension together
         char* nameAndExtension = (char*)malloc(strlen(name) + strlen(extension));
         strcpy(nameAndExtension, name);
-        strcat(nameAndExtension, extension);   
-        
+        strcat(nameAndExtension, extension); 
         //Print Everything
         printf("%-14s%4s%14d%13d\n", nameAndExtension, type, size, FLC);    
       }
       else
       {
+        name[8] = '\0';
         //Print Everything
         printf("%-14s%4s%14d%13d\n", name, type, size, FLC);
       }      
