@@ -95,7 +95,7 @@ void printDir(unsigned int sector, int depth)
   int i, k;
   for (k = 0; k < 20; k++)	
   {    
-    
+    entryToString(&dir[k], name);
     if (depth >= 16)
     {
       for (i = 0; i < depth; i++)
@@ -109,8 +109,7 @@ void printDir(unsigned int sector, int depth)
       // The directory entry is free (i.e., currently unused).
     }
     else if ((unsigned char) dir[k].name[0] == 0x00)
-    {
-      
+    {      
       // This directory entry is free and all the remaining directory
       // entries in this directory are also free.
       break;
@@ -126,62 +125,12 @@ void printDir(unsigned int sector, int depth)
         type = (char*)"Dir";   
       else
         type = (char*)"File";
-
-      //Get the name of the directory or file
-      for (i = 0; i < 8; i++)
-      {
-        //If it's blank dont do anything
-        if (dir[k].name[i] == ' ')
-        {
-          name[i] = '\0';
-          break;
-        }
-          
-        //For the current and parent directories
-        if (dir[k].name[0] == '.')
-        {
-          name[0] = '.';
-          if (dir[k].name[1] == '.')
-          {
-            name[1] = '.';
-          }
-          break;
-        }
-        else
-        {
-          name[i] = dir[k].name[i];
-        }        
-      }
       
       FLC = dir[k].firstLogicalCluster; //Get the FLC  
       size = dir[k].fileSize; //Get the size of the file   
-         
-      //Get the extension if there is one
-      if (dir[k].extension[0] != ' ')
-      {
-        extension[0] = '.';
-        for (i = 0; i < 3; i++)
-        {
-          if (dir[k].extension[i] == ' ')
-            break;
-          extension[i+1] = dir[k].extension[i];
-        }    
-        
-        extension[4] = '\0';
-        
-        //Put the name and extension together
-        char* nameAndExtension = (char*)malloc(strlen(name) + strlen(extension));
-        strcpy(nameAndExtension, name);
-        strcat(nameAndExtension, extension); 
-        //Print Everything
-        printf("%-14s%4s%14d%13d\n", nameAndExtension, type, size, FLC);    
-      }
-      else
-      {
-        name[8] = '\0';
-        //Print Everything
-        printf("%-14s%4s%14d%13d\n", name, type, size, FLC);
-      }      
+          
+      //Print Everything
+	    printf("%-14s%4s%14d%13d\n", name, type, size, FLC);  
     }
   } 
 }
