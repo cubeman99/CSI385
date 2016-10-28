@@ -15,6 +15,7 @@ typedef unsigned char* FatTable;
 typedef char* Path;
 
 
+
 /******************************************************************************
  * BootSector - struct containing the data elements in the FAT boot sector.
  *****************************************************************************/

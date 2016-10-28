@@ -5,7 +5,7 @@
 #   FILES = the list of .o files.
 
 # The compiler to use.
-CC=g++
+CC=gcc
 
 # The Compiler options
 CFLAGS=-c

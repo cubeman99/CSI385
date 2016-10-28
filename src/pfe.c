@@ -76,7 +76,8 @@ int main(int argc, char* argv[])
     return -1;
 	
 	// Print out the FAT entries.
-	for (int i = x; i <= y; i++)
+	int i;
+	for (i = x; i <= y; i++)
 	{
 		int entry = get_fat_entry((unsigned int) i, fatFileSystem.fatTable);
 		printf("Entry %d: %X\n", i, entry);

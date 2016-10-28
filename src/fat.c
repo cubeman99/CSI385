@@ -177,6 +177,7 @@ int loadWorkingDirectory()
   }
   else
   {
+    printf("ASDASDASD\n");
     // The file does not exist, save a new one.
     saveWorkingDirectory();
   }

@@ -83,14 +83,15 @@ void displayPrompt()
 
 void readCommand(char* command, char** params)
 {
-   char* lineOfInput;
-   size_t numBytes;
-   char* token;
+   char* lineOfInput = NULL; // getline() will allocate this string.
+   size_t numBytes = 0;
    int counter = 0;
  
    // Get the user's line of input, then tokenize it, delimited by spaces.
    getline(&lineOfInput, &numBytes, stdin);
-   token = strtok(lineOfInput, " \n");
+      printf("ASDASDASD\n");
+   char* token = strtok(lineOfInput, " \n");
+      printf("%s\n", token);
    
    // The first token is always the command name.
    strcpy(command, token);
@@ -104,6 +105,8 @@ void readCommand(char* command, char** params)
       counter++;
    }
    params[counter] = NULL; // Null terminate the parameter list.
+   
+   free(lineOfInput);
 }
 
 
