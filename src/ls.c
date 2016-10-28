@@ -1,7 +1,11 @@
 /*****************************************************************************
+ * ls.c: List information about files.
+ *
  * Author: Joey Gallahan
  * 
- * Description: Performs the ls command
+ * Description: Performs the ls command, which lists information about the
+ *              files in a directory (defaulting to the current working
+ *              directory).
  *
  * Certification of Authenticity:
  * I certify that this assignment is entirely my own work.

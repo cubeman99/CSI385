@@ -108,12 +108,7 @@ int terminateFatFileSystem();
 int getFatBootSector(FatBootSector* bootSector);
 
 const char* getWorkingDirectoryPathName();
-int getWorkingDirectory(DirectoryEntry* entry);
 int changeWorkingDirectory(const char* pathName);
-int findDirectoryEntry(char* pathName,
-                       DirectoryEntry* entry);
-
-
 int findDirectoryEntryByName(unsigned short firstLogicalCluster,
                              DirectoryEntry* entry,
                              int* index,
@@ -123,9 +118,6 @@ int entryToString(DirectoryEntry* entry,
 int readLogicalClusterChain(unsigned short firstLogicalCluster,
                             unsigned char** dataPtr,
                             unsigned int* numBytes);
-int readFileData(DirectoryEntry* entry,
-                 unsigned char** dataPtr,
-                 unsigned int* numBytes);
 
 // Internal functions:
 int loadFAT12BootSector();

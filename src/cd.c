@@ -1,26 +1,39 @@
 /******************************************************************************
- * pfe.c: Print FAT entry
+ * cd.c: Change directory
  *
  * Author: David Jordan
  *
- * Description: Prints the 12-bit FAT entry values representing logical
- *              sectors X to Y.
- * 
+ * Description: Performs the cd command, which changes the current working
+ *              directory using the given path name. If no path is given, then
+ *              it changes to the root directory.
+ *
+ * Certification of Authenticity:
+ * I certify that this assignment is entirely my own work.
  *****************************************************************************/
 
-#include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-
 #include "fat.h"
 
-/******************************************************************************
- * main - runs the pfe command.
- *****************************************************************************/
+
 int main(int argc, char* argv[])
 {
-  initializeFatFileSystem();  
-  changeWorkingDirectory(argv[1]);
+  if (initializeFatFileSystem() != 0)
+    return -1;
+  
+  if (argc == 1)
+  {
+    changeWorkingDirectory("/");
+  }
+  else if (argc == 2)
+  {
+    changeWorkingDirectory(argv[1]);
+  }
+  else
+  {
+    printf("Error: too many arguments for cd command\n");
+    printf("usage: cd [PATH]\n");
+  }
+  
   terminateFatFileSystem();
   return 0;
 }
