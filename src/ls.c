@@ -108,23 +108,23 @@ void printDir(unsigned int sector, int depth)
       return;
     }
 
-    if ((unsigned char) dir[k].name[0] == 0xE5)
+    if ((unsigned char) dir[k].name[0] == DIR_ENTRY_FREE)
     {
       // The directory entry is free (i.e., currently unused).
     }
-    else if ((unsigned char) dir[k].name[0] == 0x00)
+    else if ((unsigned char) dir[k].name[0] == DIR_ENTRY_END_OF_ENTRIES)
     {      
       // This directory entry is free and all the remaining directory
       // entries in this directory are also free.
       break;
     }
-    else if (dir[k].attributes == 0x0F)
+    else if (dir[k].attributes == DIR_ENTRY_ATTRIB_LONG_FILE_NAME)
     {
       // Long filename, ignore.
     }
     else
     {   
-      int isSubDir = (dir[k].attributes & 0x10);
+      int isSubDir = (dir[k].attributes & DIR_ENTRY_ATTRIB_SUBDIRECTORY);
       if (isSubDir)
         type = (char*)"Dir";   
       else
