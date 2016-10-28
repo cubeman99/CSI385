@@ -71,7 +71,7 @@ void printDir(unsigned int sector, int depth)
 {
   unsigned char bytes[BYTES_PER_SECTOR];
   
-  char name[9];
+  char name[13];
   char extension[5];
   char* type;
   unsigned int size;
