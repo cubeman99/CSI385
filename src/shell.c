@@ -89,9 +89,7 @@ void readCommand(char* command, char** params)
  
    // Get the user's line of input, then tokenize it, delimited by spaces.
    getline(&lineOfInput, &numBytes, stdin);
-      printf("ASDASDASD\n");
    char* token = strtok(lineOfInput, " \n");
-      printf("%s\n", token);
    
    // The first token is always the command name.
    strcpy(command, token);
