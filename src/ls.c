@@ -73,7 +73,7 @@ int listDirectoryContents(int numArgs, char* path)
 
 void printDir(unsigned int sector, int depth)
 {
-  unsigned char bytes[BYTES_PER_SECTOR];
+  unsigned char bytes[fatFileSystem.bootSector.bytesPerSector];
   
   char name[13];
   char extension[5];

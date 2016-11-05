@@ -16,23 +16,6 @@
 #include "fat.h"
 
 
-/******************************************************************************
- * You must set these global variables:
- *    FILE_SYSTEM_ID -- the file id for the file system (here, the floppy disk
- *                      filesystem)
- *    BYTES_PER_SECTOR -- the number of bytes in each sector of the filesystem
- *
- * You may use these support functions (defined in fatSupport.c)
- *    read_sector
- *    write_sector
- *    get_fat_entry
- *    set_fat_entry
- *****************************************************************************/
-
-FILE* FILE_SYSTEM_ID;
-int BYTES_PER_SECTOR;
-FatBootSector FAT_BOOT_SECTOR;
-
 FatFileSystem fatFileSystem;
 
 
@@ -41,20 +24,19 @@ FatFileSystem fatFileSystem;
  *****************************************************************************/
 int loadFAT12BootSector()
 {
-  // Set it to this only to read the boot sector, then reset it per the
-  // value in the boot sector.
-  BYTES_PER_SECTOR = sizeof(FatBootSector);
+   // Make sure we're at the beginning of the disk image file.
+   if (fseek(fatFileSystem.fileSystemId, 0, SEEK_SET) != 0)
+   {
+     return -1;
+   }
 
-  // Read the part of the boot sector we care about.
-  if (read_sector(0, (unsigned char*) &fatFileSystem.bootSector) == -1)
-	{
-		return -1;
-	}
-
-  // Now change this variable to the actual bytes-per-sector.
-  BYTES_PER_SECTOR = fatFileSystem.bootSector.bytesPerSector; 
-
-  FAT_BOOT_SECTOR = fatFileSystem.bootSector;
+   // Read the boot sector from the disk image file.
+   int bytesRead = fread(&fatFileSystem.bootSector, sizeof(char),
+                         sizeof(FatBootSector), fatFileSystem.fileSystemId);
+   if (bytesRead != sizeof(FatBootSector))
+   {
+      return -1;
+   }
 
   // Calculate some sector offsets.
 	fatFileSystem.sectorOffsets.fatTables =
@@ -79,8 +61,8 @@ int loadFAT12BootSector()
 unsigned char* readFAT12Table(int fatIndex)
 {
 	// Allocate the FAT buffer.
-	unsigned char* buffer = (unsigned char*) malloc(BYTES_PER_SECTOR *
-		fatFileSystem.bootSector.sectorsPerFAT);
+	unsigned char* buffer = (unsigned char*) malloc(fatFileSystem.bootSector
+	  .bytesPerSector * fatFileSystem.bootSector.sectorsPerFAT);
 
 	// Read the FAT table from the file.
   if (read_sector(1 + fatIndex, buffer) == -1)
@@ -107,8 +89,8 @@ void freeFAT12Table(unsigned char* fatTable)
 int initializeFatFileSystem()
 {
   // Open the disk image file.
-  FILE_SYSTEM_ID = fopen("../disks/floppy2", "r+");
-  if (FILE_SYSTEM_ID == NULL)
+  fatFileSystem.fileSystemId = fopen("../disks/floppy2", "r+");
+  if (fatFileSystem.fileSystemId == NULL)
 	{
     printf("Could not open the floppy drive or image.\n");
     return 1;
@@ -137,7 +119,7 @@ int initializeFatFileSystem()
 int terminateFatFileSystem()
 {
 	free(fatFileSystem.fatTable);
-  fclose(FILE_SYSTEM_ID);
+  fclose(fatFileSystem.fileSystemId);
   return 0;
 }
 

@@ -113,6 +113,7 @@ typedef struct
 
 typedef struct
 {
+  FILE*            fileSystemId;
 	FatBootSector    bootSector;
 	FatTable         fatTable;
 	WorkingDirectory workingDirectory;
@@ -153,10 +154,6 @@ void freeFAT12Table(unsigned char* fatTable);
 int loadWorkingDirectory();
 int saveWorkingDirectory();
 
-// Some global variables used by FAT functions.
-extern FatBootSector FAT_BOOT_SECTOR;
-extern FILE* FILE_SYSTEM_ID;
-extern int BYTES_PER_SECTOR;
 
 extern FatFileSystem fatFileSystem;
 

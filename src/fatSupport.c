@@ -12,15 +12,8 @@
  *****************************************************************************/
 
 #include <stdio.h>
+#include "fat.h"
 
-/******************************************************************************
- * FILE_SYSTEM_ID -- the file id for the file system (here, the floppy disk
- *                   filesystem)
- * BYTES_PER_SECTOR -- the number of bytes in each sector of the filesystem
- *****************************************************************************/
-
-extern FILE* FILE_SYSTEM_ID;
-extern int BYTES_PER_SECTOR;
 
 /******************************************************************************
  * read_sector
@@ -39,16 +32,17 @@ int read_sector(unsigned int sector_number, unsigned char* buffer)
 {
    int bytes_read;
 
-   if (fseek(FILE_SYSTEM_ID,
-             (long) sector_number * (long) BYTES_PER_SECTOR, SEEK_SET) != 0)
+   if (fseek(fatFileSystem.fileSystemId, (long) sector_number *
+             (long) fatFileSystem.bootSector.bytesPerSector, SEEK_SET) != 0)
    {
 	   printf("Error accessing sector %d\n", sector_number);
       return -1;
    }
 
-   bytes_read = fread(buffer, sizeof(char), BYTES_PER_SECTOR, FILE_SYSTEM_ID);
+   bytes_read = fread(buffer, sizeof(char), fatFileSystem.bootSector
+                      .bytesPerSector, fatFileSystem.fileSystemId);
 
-   if (bytes_read != BYTES_PER_SECTOR)
+   if (bytes_read != fatFileSystem.bootSector.bytesPerSector)
    {
       printf("Error reading sector %d\n", sector_number);
       return -1;
@@ -74,17 +68,17 @@ int write_sector(unsigned int sector_number, unsigned char* buffer)
 {
    int bytes_written;
 
-   if (fseek(FILE_SYSTEM_ID,
-       (long) sector_number * (long) BYTES_PER_SECTOR, SEEK_SET) != 0) 
+   if (fseek(fatFileSystem.fileSystemId, (long) sector_number *
+             (long) fatFileSystem.bootSector.bytesPerSector, SEEK_SET) != 0) 
    {
       printf("Error accessing sector %d\n", sector_number);
       return -1;
    }
 
-   bytes_written = fwrite(buffer,
-                          sizeof(char), BYTES_PER_SECTOR, FILE_SYSTEM_ID);
+   bytes_written = fwrite(buffer, sizeof(char), fatFileSystem.bootSector
+                          .bytesPerSector, fatFileSystem.fileSystemId);
 
-   if (bytes_written != BYTES_PER_SECTOR) 
+   if (bytes_written != fatFileSystem.bootSector.bytesPerSector) 
    {
       printf("Error reading sector %d\n", sector_number);
       return -1;
