@@ -19,123 +19,76 @@
 
 #include "fat.h"
 
-int listDirectoryContents(int numArgs, char* path);
-void printDir(unsigned int sector, int depth);
+
+void listDirectoryContents(DirectoryEntry* directory);
+
 
 int main(int argc, char* argv[])
 {
-  initializeFatFileSystem();
-  listDirectoryContents(argc-1, argv[1]);
-  terminateFatFileSystem();
-  return 0;
-}
-
-//ls command
-int listDirectoryContents(int numArgs, char* path)
-{
-  WorkingDirectory workingDir = fatFileSystem.workingDirectory;
-  char* pathName = workingDir.pathName;
-  DirectoryLevel levels;
-  unsigned char* dataPtr;
-  unsigned short firstLogicalCluster;
-  unsigned int numBytes;  
+  if (initializeFatFileSystem() != 0)
+    return -1;
   
-  // Read the directory's data containing its directory entries.
-  DirectoryEntry* dir = (DirectoryEntry*) dataPtr;
-  if (numArgs == 1)
-  {
-    if (changeWorkingDirectory(path) == 0)
-    {
-      WorkingDirectory newWorkingDir = fatFileSystem.workingDirectory;
-      levels = newWorkingDir.dirLevels[newWorkingDir.depthLevel - 1];
-      firstLogicalCluster = levels.firstLogicalCluster;
-      printDir(firstLogicalCluster, levels.indexInParentDirectory);
-      changeWorkingDirectory(pathName);  
-    }
-  }  
-  else if (numArgs > 1)
+  // Validate the number of arguments.
+  if (argc > 2)
   {
     printf("Error: Too many arguments.\n");
     return -1;
   }
-  else
+  
+  // Load the working directory.
+  FilePath dirPath;
+  getWorkingDirectory(&dirPath);
+
+  // If given a path argument, change to that path.
+  if (argc == 2)
   {
-    if (loadWorkingDirectory() != 0)
+    if (changeFilePath(&dirPath, argv[1], PATH_TYPE_DIRECTORY) != 0)
     {
-      printf("Error: Could not load working directory.\n");
       return -1;
     }
-    levels = workingDir.dirLevels[workingDir.depthLevel - 1];
-    firstLogicalCluster = levels.firstLogicalCluster;
-    printDir(firstLogicalCluster, levels.indexInParentDirectory);
   }
+  
+  // Open the directory's data.
+  unsigned short flc = dirPath.dirLevels[dirPath.depthLevel - 1].firstLogicalCluster;
+  DirectoryEntry* directory = openDirectory(flc);
+  
+  // Print the directory's contents.
+  if (directory != NULL)
+  {
+    listDirectoryContents(directory);
+    closeDirectory(directory);
+  }
+  
+  terminateFatFileSystem();
+  return 0;
 }
 
-void printDir(unsigned int sector, int depth)
+
+// ls command
+void listDirectoryContents(DirectoryEntry* directory)
 {
-  unsigned char bytes[fatFileSystem.bootSector.bytesPerSector];
-  
-  char name[13];
-  char extension[5];
-  char* type;
-  unsigned int size;
-  unsigned int FLC;
+  char name[FAT12_MAX_FILE_NAME_LENGTH];
+  DirectoryEntry* entry;
+  int index = 0;
+  const char* type;
   
   printf("Name%-10sType%-10sSize%-10sFLC\n", "", "", "");
   printf("---------------------------------------------\n");
   
-  // Translate logical cluster number into physical sector number.
-  unsigned int physicalSector = sector;
-  if (physicalSector == 0)
-    physicalSector = fatFileSystem.sectorOffsets.rootDirectory;
-  else
-    physicalSector = fatFileSystem.sectorOffsets.dataRegion + sector - 2;
-      
-  read_sector(physicalSector, bytes);
-
-  DirectoryEntry* dir = (DirectoryEntry*) bytes;
-
-  // Print the contents of the directory.
-  int i, k;
-  for (k = 0; k < 20; k++)	
-  {    
-    entryToString(&dir[k], name);
-    if (depth >= 16)
-    {
-      for (i = 0; i < depth; i++)
-        printf("   ");
-      printf(" (too deep)\n");
-      return;
-    }
-
-    if ((unsigned char) dir[k].name[0] == DIR_ENTRY_FREE)
-    {
-      // The directory entry is free (i.e., currently unused).
-    }
-    else if ((unsigned char) dir[k].name[0] == DIR_ENTRY_END_OF_ENTRIES)
-    {      
-      // This directory entry is free and all the remaining directory
-      // entries in this directory are also free.
-      break;
-    }
-    else if (dir[k].attributes == DIR_ENTRY_ATTRIB_LONG_FILE_NAME)
-    {
-      // Long filename, ignore.
-    }
+  // Print out info for each entry in the directory.
+  for (entry = getFirstValidEntry(directory, &index); entry != NULL;
+       entry = getNextValidEntry(entry, &index))
+  {
+    getEntryName(entry, name);
+    
+    if (isEntryADirectory(entry))
+      type = "Dir";   
     else
-    {   
-      int isSubDir = (dir[k].attributes & DIR_ENTRY_ATTRIB_SUBDIRECTORY);
-      if (isSubDir)
-        type = (char*)"Dir";   
-      else
-        type = (char*)"File";
-      
-      FLC = dir[k].firstLogicalCluster; //Get the FLC  
-      size = dir[k].fileSize; //Get the size of the file   
-          
-      //Print Everything
-	    printf("%-14s%4s%14d%13d\n", name, type, size, FLC);  
-    }
-  } 
+      type = "File";
+    
+    printf("%-14s%4s%14d%13d\n", name, type, entry->fileSize,
+           entry->firstLogicalCluster);  
+  }
 }
+
 

@@ -18,8 +18,11 @@ int main(int argc, char* argv[])
 {
   if (initializeFatFileSystem() != 0)
     return -1;
+    
+  FilePath workingDir;
+  getWorkingDirectory(&workingDir);
   
-  printf("%s\n", getWorkingDirectoryPathName()); 
+  printf("%s\n", workingDir.pathName); 
 
   terminateFatFileSystem();
   return 0;

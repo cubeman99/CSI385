@@ -22,11 +22,18 @@ int main(int argc, char* argv[])
   
   if (argc == 1)
   {
-    changeWorkingDirectory("/");
+    // cd to the root directory.
+    FilePath root;
+    initFilePath(&root);
+    setWorkingDirectory(&root);
   }
   else if (argc == 2)
   {
-    changeWorkingDirectory(argv[1]);
+    // cd to the given path name.
+    FilePath workingDir;
+    getWorkingDirectory(&workingDir);
+    changeFilePath(&workingDir, argv[1], PATH_TYPE_DIRECTORY);
+    setWorkingDirectory(&workingDir);
   }
   else
   {
