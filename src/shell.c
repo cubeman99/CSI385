@@ -33,6 +33,7 @@ int main()
    char command[32];
    char* params[32];
    int status;
+   int i;
    int exitShell = FALSE;
 
    while (exitShell != TRUE)
@@ -45,6 +46,10 @@ int main()
       { 
          exitShell = TRUE;
       }
+      else if (access(command, F_OK) == -1)
+      {
+         printf("Error: Unknown command '%s'\n", command);
+      }
       else
       {
          // Fork a child process to run the command executable.
@@ -56,13 +61,12 @@ int main()
          {
             execve(command, params, 0);
       	 }
-          
-         // Free up the previously allocated parameter strings.
-         int i;
-         for (i = 0; params[i] != NULL; i++)
-         {
-            free(params[i]);
-         }
+      }
+      
+      // Free up the previously allocated parameter strings.
+      for (i = 0; params[i] != NULL; i++)
+      {
+         free(params[i]);
       }
    }   
 
