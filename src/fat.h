@@ -5,15 +5,37 @@
 #include <stdio.h>
 
 
-typedef unsigned char* FatTable;
+// NEW Changes:
+//  * struct WorkingDirectory --> struct FilePath
+//  * changeWorkingDirectory --> changeFilePath
+//  * Directory functions now take a DirectoryEntry pointer (list of entries)
+//    - Use getFirstValidEntry() and getNextValidEntry() to iterate directories
+//  * findDirectoryEntryByName --> findEntryByName
+//  * entryToString --> getEntryName
+//  * readLogicalClusterChain --> readFileContents
+//  * Removed workingDirectory variable from FatFileSystem, use
+//      getWorkingDirectory() along with a FilePath instead.
+//  * Removed getWorkingDirectoryPathName
 
 
+//-----------------------------------------------------------------------------
+// Constants
+//-----------------------------------------------------------------------------
+
+// The file name of the disk image file to open.
+#define FAT12_DISK_IMAGE_FILE_NAME "../disks/floppy2"
+
+// The maximum number of characters needed to contain a file name.
 #define FAT12_MAX_FILE_NAME_LENGTH 13
+
+// The maximum allowed depth of a file path.
 #define FAT12_MAX_DIRECTORY_DEPTH 32
+
+// The maximum number of allowed characters for an absolute file path.
 #define FAT12_MAX_PATH_NAME_LENGTH (13 * 32)
 
+// The name of the file in which the working directory's path name is stored.
 #define WORKING_DIRECTORY_FILE_NAME "./cwd.txt"
-
 
 // If the first byte of the Filename field is 0xE5, then the directory entry is
 // free (i.e., currently unused), and hence there is no file or subdirectory
@@ -29,7 +51,28 @@ typedef unsigned char* FatTable;
 // file name and can be ignored for purposes of this assignment. 
 #define DIR_ENTRY_ATTRIB_LONG_FILE_NAME  0x0F
 
-// Bit masks for the possible attributes of a Directory Entry.
+
+//-----------------------------------------------------------------------------
+// Type Defines
+//-----------------------------------------------------------------------------
+
+typedef unsigned char* FatTable;
+
+/******************************************************************************
+ * PathType - Possible file types that a path can point to (used for the
+ *            function changeFilePath).
+ *****************************************************************************/
+typedef enum
+{
+  PATH_TYPE_ANY       = 0,
+  PATH_TYPE_DIRECTORY = 1,
+  PATH_TYPE_FILE      = 2,
+} PathType;
+
+/******************************************************************************
+ * DirectoryEntryAttribs - bit masks for the possible attributes of a
+ *                         Directory Entry.
+ *****************************************************************************/
 typedef enum
 {
   DIR_ENTRY_ATTRIB_READ_ONLY    = 0x01,
@@ -41,119 +84,383 @@ typedef enum
   
 } DirectoryEntryAttribs;
 
+#pragma pack(1)
 
 /******************************************************************************
- * BootSector - struct containing the data elements in the FAT boot sector.
+ * FatBootSector - struct containing the data elements in the FAT boot sector.
  *****************************************************************************/
-#pragma pack(1)
 typedef struct
 {
   char            ignore1[11];
-
   unsigned short  bytesPerSector;
   unsigned char   sectorsPerCluster;
   unsigned short  numReservedSectors;
   unsigned char   numFATs;
-	unsigned short  maxNumRootDirEntries;
-	unsigned short  totalSectorCount;
-
-	char            ignore2[1];
-
-	unsigned short  sectorsPerFAT;
-	unsigned short  sectorsPerTrack;
-	unsigned short  numHeads;
-
-	char            ignore3[4];
-
-	unsigned int    totalSectorCountForFAT32;
-
-	char            ignore4[2];
-
-	unsigned char   bootSignature;
-	unsigned int    volumeID;
-	char            volumeLabel[11];
-	char            fileSystemType[8];
-
-	// Rest of boot sector is ignored.
-
+  unsigned short  maxNumRootDirEntries;
+  unsigned short  totalSectorCount;
+  char            ignore2[1];
+  unsigned short  sectorsPerFAT;
+  unsigned short  sectorsPerTrack;
+  unsigned short  numHeads;
+  char            ignore3[4];
+  unsigned int    totalSectorCountForFAT32;
+  char            ignore4[2];
+  unsigned char   bootSignature;
+  unsigned int    volumeID;
+  char            volumeLabel[11];
+  char            fileSystemType[8];
 } FatBootSector;
 
+/******************************************************************************
+ * DirectoryEntry - struct for an entry in a directory, representing a file or
+ *                  subdirectory in the file system.
+ *****************************************************************************/
 typedef struct
 {
-	char           name[8];
-	char           extension[3];
-	unsigned char  attributes;
-	unsigned char  reserved[2];
-	unsigned short creationTime;
-	unsigned short creationDate;
-	unsigned short lastAccessDate;
-	unsigned char  ignored[2];
-	unsigned short lastWriteTime;
-	unsigned short lastWriteDate;
-	unsigned short firstLogicalCluster;
-	unsigned int   fileSize;
+  char           name[8];
+  char           extension[3];
+  unsigned char  attributes;
+  unsigned char  reserved[2];
+  unsigned short creationTime;
+  unsigned short creationDate;
+  unsigned short lastAccessDate;
+  unsigned char  ignored[2];
+  unsigned short lastWriteTime;
+  unsigned short lastWriteDate;
+  unsigned short firstLogicalCluster;
+  unsigned int   fileSize;
 } DirectoryEntry;
 
+/******************************************************************************
+ * DirectoryLevel - a single level in an absolute file path. A FilePath with
+ *                  a depth greater than 1 will have multiple DirectoryLevels,
+ *                  one for each part of the path.
+ *****************************************************************************/
 typedef struct
 {
   unsigned int   indexInParentDirectory; // negligable for root directory
-	unsigned short firstLogicalCluster;
-   unsigned int offsetInPathName;
+  unsigned short firstLogicalCluster;
+  unsigned int   offsetInPathName;
 } DirectoryLevel;
 
+/******************************************************************************
+ * FilePath - Represents an absolute path to a file on the file system, 
+ *            containing information on how to navigate to each part of the
+ *            path.
+ *****************************************************************************/
 typedef struct
 {
-  unsigned int depthLevel; // 1 = root directory
-  
+  char           pathName[FAT12_MAX_PATH_NAME_LENGTH]; // absolute path name
   DirectoryLevel dirLevels[FAT12_MAX_DIRECTORY_DEPTH];
+  unsigned int   depthLevel; // size of dirLevels, 1 = root directory
+  int            isADirectory; // 1 if the file path points to a directory,
+                               // 0 if it points to a file
+} FilePath;
 
-	char pathName[FAT12_MAX_PATH_NAME_LENGTH];  
-  
-} WorkingDirectory;
-
+/******************************************************************************
+ * FatFileSystem - struct containing information needed to work with a FAT12
+ *                 file system.
+ *****************************************************************************/
 typedef struct
 {
   FILE*            fileSystemId;
-	FatBootSector    bootSector;
-	FatTable         fatTable;
-	WorkingDirectory workingDirectory;
-	
-	struct
-	{
-	  unsigned short fatTables;
-	  unsigned short rootDirectory;
-	  unsigned short dataRegion;
-	} sectorOffsets;
-	
+  FatBootSector    bootSector;
+  FatTable         fatTable;
+  
+  struct
+  {
+    unsigned short fatTables;
+    unsigned short rootDirectory;
+    unsigned short dataRegion;
+  } sectorOffsets;
+  
 } FatFileSystem;
 
 #pragma pack()
 
 
-// FAT12 Functions.
+//-----------------------------------------------------------------------------
+// FAT12 interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * initializeFatFileSystem - Initialize the FAT file system by loading the
+ *                           boot sector, reading the first FAT table, and
+ *                           loading the working directory
+ *
+ * Return - 0 on success, -1 on failure
+ *****************************************************************************/
 int initializeFatFileSystem();
-int terminateFatFileSystem();
-int getFatBootSector(FatBootSector* bootSector);
 
-const char* getWorkingDirectoryPathName();
-int changeWorkingDirectory(const char* pathName);
-int findDirectoryEntryByName(unsigned short firstLogicalCluster,
-                             DirectoryEntry* entry,
-                             int* index,
-                             const char* name);
-int entryToString(DirectoryEntry* entry,
-                  char* string);
-int readLogicalClusterChain(unsigned short firstLogicalCluster,
-                            unsigned char** dataPtr,
-                            unsigned int* numBytes);
+/******************************************************************************
+ * terminateFatFileSystem - Terminate the FAT file sysem, deallocating any of
+ *                          its used memory
+ *
+ * Return - none
+ *****************************************************************************/
+void terminateFatFileSystem();
 
-// Internal functions:
-int loadFAT12BootSector();
-unsigned char* readFAT12Table(int fatIndex);
-void freeFAT12Table(unsigned char* fatTable);
-int loadWorkingDirectory();
-int saveWorkingDirectory();
+/******************************************************************************
+ * getFatBootSector - Retreive the information from the FAT file system's
+ *                    boot sector
+ *
+ * bootSector - a pointer to the boot sector struct to write to
+ *
+ * Return - none
+ *****************************************************************************/
+void getFatBootSector(FatBootSector* bootSector);
 
+/******************************************************************************
+ * getNumberOfUsedBlocks - Get the number of used blocks and the total number
+ *                         of blocks in the file system, where a block is a
+ *                         logical data cluster
+ *
+ * numUsedBlocks - the number of blocks currently in-use
+ * totalBlocks - the total number of blocks in the file system
+ *
+ * Return - none
+ *****************************************************************************/
+void getNumberOfUsedBlocks(int* numUsedBlocks, int* totalBlocks);
+
+
+//-----------------------------------------------------------------------------
+// File Path interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * initFilePath - Initialize a file path to the root directory
+ *
+ * filePath - the file path to initialize
+ *
+ * Return - none
+ *****************************************************************************/
+void initFilePath(FilePath* filePath);
+
+/******************************************************************************
+ * getWorkingDirectory - Load the current working directory into a file path
+ *
+ * filePath - the file path to load the working directory into
+ *
+ * Return - none
+ *****************************************************************************/
+void getWorkingDirectory(FilePath* filePath);
+
+/******************************************************************************
+ * setWorkingDirectory - Set the current working directory to the given file
+ *                       path
+ *
+ * filePath - the file path to set the working directory as
+ *
+ * Return - none
+ *****************************************************************************/
+void setWorkingDirectory(FilePath* filePath);
+
+/******************************************************************************
+ * changeFilePath - Change the path of a file path, either replacing it if
+ *                  given a absolute path, or concatenating it if given a
+ *                  relative path. If the resulting path doesn't exist, then
+ *                  filePath will remain unchanged and -1 will be returned.
+ *
+ * filePath - the file path to change
+ * pathName - the absolute or relative path name to change the file path to
+ * type - the type of file that the path must point to. Possible values:
+ *         PATH_TYPE_DIRECTORY - must be a directory
+ *         PATH_TYPE_FILE      - must be a file
+ *         PATH_TYPE_ANY       - can be either a file or directory
+ *
+ * Return - 0 on success (the resulting path extists), -1 on failure (the
+ *          resulting path doesn't exist)
+ *****************************************************************************/
+int changeFilePath(FilePath* filePath, const char* pathName, int pathType);
+
+
+//-----------------------------------------------------------------------------
+// Directory interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * openDirectory - Open a directory's contents from the file system
+ * 
+ * flc - the first logical cluster of the directory to open
+ *  
+ * Return - a list of directory entries on success, or NULL on failure
+ *****************************************************************************/
+DirectoryEntry* openDirectory(unsigned short flc);
+
+/******************************************************************************
+ * closeDirectory - Close an opened directory
+ * 
+ * directory - the opened directory to close (a pointer to the directory's
+ *             first entry)
+ *  
+ * Return - none
+ *****************************************************************************/
+void closeDirectory(DirectoryEntry* directory);
+
+/******************************************************************************
+ * saveDirectory - Save a directory's contents to the file system
+ * 
+ * flc - the first logical cluster to save the directory to.
+ * directory - the opened directory to save (a pointer to the directory's
+ *             first entry)
+ *  
+ * Return - 0 on success, -1 if there wasn't enough space to save the entire
+ *          directory.
+ *****************************************************************************/
+int saveDirectory(unsigned short flc, DirectoryEntry* directory);
+
+/******************************************************************************
+ * organizeDirectory - Organizing a directory's list of entries by removing
+ *                     empty space between entries.
+ * 
+ * directory - the directory's list of entries to organize
+ *  
+ * Return - none
+ *****************************************************************************/
+void organizeDirectory(DirectoryEntry* directory);
+
+/******************************************************************************
+ * removeEntry - Remove an entry from a directory
+ * 
+ * directory - the parent directory of the entry to remove
+ * index - the index of the entry in its parent directory's list of entries
+ *  
+ * Return - none
+ *****************************************************************************/
+void removeEntry(DirectoryEntry* directory, int index);
+
+/******************************************************************************
+ * findEntryByName - Find a DirectoryEntry by name in a given directory
+ *
+ * directory - the list of directory entries to look through
+ * name - the name of the directory entry to look for
+ *
+ * Return - the found entry's index in the given directory, or -1 if the entry
+ *          was not found
+ *****************************************************************************/
+int findEntryByName(DirectoryEntry* directory, const char* name);
+
+/******************************************************************************
+ * getFirstValidEntry - Find the first valid entry in a directory. Use this
+ *                      along with getNextValidEntry() to iterate the entries
+ *                      of a directory.
+ *
+ * entry - the current entry in a list of entries
+ * indexCounter - counter that gets incremented when moving to the next entry
+ *
+ * Return - the first valid entry in a directory's list of entries
+ *****************************************************************************/
+DirectoryEntry* getFirstValidEntry(DirectoryEntry* entry, int* indexCounter);
+
+/******************************************************************************
+ * getNextValidEntry - Find the next valid entry in a directory, starting
+ *                     after the given entry. Use this to iterate the entries
+ *                     of a directory.
+ *
+ * entry - the current entry in a list of entries
+ * indexCounter - counter that gets incremented when moving to the next entry
+ *
+ * Return - the next valid entry after the given entry
+ *****************************************************************************/
+DirectoryEntry* getNextValidEntry(DirectoryEntry* entry, int* indexCounter);
+
+/******************************************************************************
+ * isDirectoryEmpty - Check if a directory is empty (has no entries other than
+ *                    . and ..)
+ *
+ * directory - the directory's list of entries to check
+ *
+ * Return - 1 if the directory is empty, 0 if it is not
+ *****************************************************************************/
+int isDirectoryEmpty(DirectoryEntry* directory);
+
+/******************************************************************************
+ * createNewEntry - Find a DirectoryEntry by name in a given directory
+ *
+ * flc - the first logical cluster of the directory
+ * directory - the directory's list of directory entries to create a new entry
+ *             in. This will be reallocated if there is not enough room in the
+ *             directory.
+ * name - the name of the new directory entry to create
+ * newEntryIndex - the new entry's index in the directory
+ * 
+ * Return - 0 on success, -1 if there was not enough room on the file system
+ *          for one more entry.
+ *****************************************************************************/
+int createNewEntry(unsigned short flc, DirectoryEntry** directory,
+                   const char* name, int* newEntryIndex);
+
+
+//-----------------------------------------------------------------------------
+// Directory Entry interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * isEntryADirectory - Check if a directory entry is a directory instead of a
+ *                     file
+ *
+ * entry - The directory entry to check
+ * 
+ * Return - 1 if the entry is a directory, 0 if it is a file
+ *****************************************************************************/
+int isEntryADirectory(DirectoryEntry* entry);
+
+/******************************************************************************
+ * getEntryName - Write the full name & extension of a directory entry into a
+ *                null terminated string
+ *
+ * entry - The directory entry to get the name of
+ * nameString - a character array to write the name to. The array must have a
+ *              length of at least FAT12_MAX_FILE_NAME_LENGTH.
+ * 
+ * Return - none
+ *****************************************************************************/
+void getEntryName(DirectoryEntry* entry, char* nameString);
+
+
+//-----------------------------------------------------------------------------
+// File Data interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * readFileContents - Read the data of a file's contents given its first
+ *                    logical cluster
+ *
+ * flc - the first logical cluster of the file
+ * data - a pointer to the files data
+ * numBytes - the number of bytes that were read
+ * 
+ * Return - 0 on success, -1 on failure
+ *****************************************************************************/
+int readFileContents(unsigned short flc, unsigned char** data, unsigned int* numBytes);
+
+/******************************************************************************
+ * writeFileContents - Write data to a file's contents (overwriting any
+ *                     existing file data)
+ *
+ * flc - the first logical cluster of the file
+ * data - the data to write
+ * numBytes - the number of bytes to write
+ * 
+ * Return - 0 on success, -1 on failure (if there wasn't enough space on the
+ *          file system
+ *****************************************************************************/
+int writeFileContents(unsigned short flc, unsigned char* data, unsigned int numBytes);
+
+/******************************************************************************
+ * freeFileContents - Free a file's contents, freeing the logical clusters it
+ *                    is using
+ *
+ * flc - the first logical cluster of the file
+ * 
+ * Return - 0 on success, -1 on failure
+ *****************************************************************************/
+int freeFileContents(unsigned short flc);
+
+
+//-----------------------------------------------------------------------------
+// Global Variables
+//-----------------------------------------------------------------------------
 
 extern FatFileSystem fatFileSystem;
 

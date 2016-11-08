@@ -7,272 +7,261 @@
  * I certify that this assignment is entirely my own work.
  ****************************************************************************/
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "fat.h"
 
 
+//-----------------------------------------------------------------------------
+// Variables
+//-----------------------------------------------------------------------------
+
 FatFileSystem fatFileSystem;
 
 
-/******************************************************************************
- * loadFAT12BootSector
- *****************************************************************************/
-int loadFAT12BootSector()
-{
-   // Make sure we're at the beginning of the disk image file.
-   if (fseek(fatFileSystem.fileSystemId, 0, SEEK_SET) != 0)
-   {
-     return -1;
-   }
+//-----------------------------------------------------------------------------
+// Function Prototypes
+//-----------------------------------------------------------------------------
 
-   // Read the boot sector from the disk image file.
-   int bytesRead = fread(&fatFileSystem.bootSector, sizeof(char),
-                         sizeof(FatBootSector), fatFileSystem.fileSystemId);
-   if (bytesRead != sizeof(FatBootSector))
-   {
-      return -1;
-   }
+static int loadBootSector();
+static unsigned char* readFatTable(int fatIndex);
+static void freeFatTable(unsigned char* fatTable);
 
-  // Calculate some sector offsets.
-	fatFileSystem.sectorOffsets.fatTables =
-	  fatFileSystem.bootSector.numReservedSectors;
-	
-  fatFileSystem.sectorOffsets.rootDirectory =
-    fatFileSystem.sectorOffsets.fatTables +
-    (fatFileSystem.bootSector.sectorsPerFAT *
-    fatFileSystem.bootSector.numFATs);
-    
-	fatFileSystem.sectorOffsets.dataRegion = 
-	  fatFileSystem.sectorOffsets.rootDirectory +
-	  ((fatFileSystem.bootSector.maxNumRootDirEntries * sizeof(DirectoryEntry)) /
-      fatFileSystem.bootSector.bytesPerSector);
 
-	return 0;
-}
+//-----------------------------------------------------------------------------
+// FAT12 interface
+//-----------------------------------------------------------------------------
 
 /******************************************************************************
- * readFAT12Table
+ * initializeFatFileSystem
  *****************************************************************************/
-unsigned char* readFAT12Table(int fatIndex)
-{
-	// Allocate the FAT buffer.
-	unsigned char* buffer = (unsigned char*) malloc(fatFileSystem.bootSector
-	  .bytesPerSector * fatFileSystem.bootSector.sectorsPerFAT);
-
-	// Read the FAT table from the file.
-  if (read_sector(1 + fatIndex, buffer) == -1)
-	{
-		free(buffer);
-		return NULL;
-	}
-
-	return buffer;
-}
-
-/******************************************************************************
- * freeFAT12Table
- *****************************************************************************/
-void freeFAT12Table(unsigned char* fatTable)
-{
-	free(fatTable);
-}
-
-
-
-
-
 int initializeFatFileSystem()
 {
   // Open the disk image file.
-  fatFileSystem.fileSystemId = fopen("../disks/floppy2", "r+");
+  fatFileSystem.fileSystemId = fopen(FAT12_DISK_IMAGE_FILE_NAME, "r+");
   if (fatFileSystem.fileSystemId == NULL)
-	{
+  {
     printf("Could not open the floppy drive or image.\n");
-    return 1;
+    return -1;
   }
 
-	// Load the boot sector.
-	if (loadFAT12BootSector() != 0)
-	{
-		printf("Something has gone wrong -- could not read the boot table\n");
-		return 1;
-	}
+  // Load the boot sector.
+  if (loadBootSector() != 0)
+  {
+    printf("Something has gone wrong -- could not read the boot table\n");
+    return -1;
+  }
 
-	// Read the first FAT table.
-	fatFileSystem.fatTable = readFAT12Table(0);
+  // Read the first FAT table.
+  fatFileSystem.fatTable = readFatTable(0);
   if (fatFileSystem.fatTable == NULL)
-	{
+  {
     printf("Something has gone wrong -- could not read the FAT table\n");
-		return 1;
-	}
-	
-  loadWorkingDirectory();
+    return -1;
+  }
 
   return 0;
 }
 
-int terminateFatFileSystem()
+/******************************************************************************
+ * terminateFatFileSystem
+ *****************************************************************************/
+void terminateFatFileSystem()
 {
-	free(fatFileSystem.fatTable);
+  free(fatFileSystem.fatTable);
   fclose(fatFileSystem.fileSystemId);
-  return 0;
 }
 
-int loadWorkingDirectory()
+/******************************************************************************
+ * getFatBootSector
+ *****************************************************************************/
+void getFatBootSector(FatBootSector* bootSector)
 {
+   memcpy(bootSector, &fatFileSystem.bootSector, sizeof(FatBootSector));
+}
+
+/******************************************************************************
+ * getNumberOfUsedBlocks
+ *****************************************************************************/
+void getNumberOfUsedBlocks(int* numUsedBlocks, int* totalBlocks)
+{
+  // TODO: Implement this for 'df' command.
+}
+
+
+//-----------------------------------------------------------------------------
+// File Path interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * initFilePath
+ *****************************************************************************/
+void initFilePath(FilePath* filePath)
+{
+  // Initialize to the root directory.
+  strcpy(filePath->pathName, "/");
+  filePath->isADirectory = 1;
+  filePath->depthLevel = 1;
+  filePath->dirLevels[0].indexInParentDirectory = 0; // irrelevant for root
+  filePath->dirLevels[0].firstLogicalCluster    = 0;
+  filePath->dirLevels[0].offsetInPathName       = 1;
+}
+
+/******************************************************************************
+ * getWorkingDirectory
+ *****************************************************************************/
+void getWorkingDirectory(FilePath* filePath)
+{
+  // TODO: Use some sort of shared memory to save this stuff.
+
   // Always start at the root directory.
-  fatFileSystem.workingDirectory.depthLevel = 1;
-  fatFileSystem.workingDirectory.dirLevels[0].indexInParentDirectory = 0;
-  fatFileSystem.workingDirectory.dirLevels[0].firstLogicalCluster = 0;
-  fatFileSystem.workingDirectory.dirLevels[0].offsetInPathName = 1;
-  strcpy(fatFileSystem.workingDirectory.pathName, "/");
-	
-	// Load the current working directory from file.
+  initFilePath(filePath);
+
+  // Load the current working directory from file.
   if (access(WORKING_DIRECTORY_FILE_NAME, F_OK) != -1)
   {
     // The file exists, open it.
     FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "r");
     if (cwdFile == NULL)
-	  {
-      printf("Could not initialze current working directory.\n");
-      return -1;
+    {
+      printf("Failure to get current working directory.\n");
+      return;
     }
 
     // Read the path name from the file.
-    char path[FAT12_MAX_PATH_NAME_LENGTH];
-    fgets(path, sizeof(path), cwdFile);
+    char pathName[FAT12_MAX_PATH_NAME_LENGTH];
+    fgets(pathName, sizeof(pathName), cwdFile);
  
     // Remove the newline character from the end of the path name.
-    char *pos = strchr(path, '\n');
+    char *pos = strchr(pathName, '\n');
     if (pos != NULL)
       *pos = '\0';
 
-    // Change the working directory using the read path name.
-    changeWorkingDirectory(path);
+    // Change the file path using the read path name.
+    changeFilePath(filePath, pathName, PATH_TYPE_DIRECTORY);
 
     fclose(cwdFile);
   }
-  else
-  {
-    printf("ASDASDASD\n");
-    // The file does not exist, save a new one.
-    saveWorkingDirectory();
-  }
-
-  return 0;
 }
 
-int saveWorkingDirectory()
+/******************************************************************************
+ * setWorkingDirectory
+ *****************************************************************************/
+void setWorkingDirectory(FilePath* filePath)
 {
   FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "w");
 
   if (cwdFile == NULL)
   {
-    printf("Could not initialze current working directory.\n");
-    return 1;
+    printf("Failure to set current working directory.\n");
+    return;
   }
 
-  fprintf(cwdFile, "%s\n", fatFileSystem.workingDirectory.pathName);
+  fprintf(cwdFile, "%s\n", filePath->pathName);
 
   fclose(cwdFile);
-  return 0;
+  return;
 }
 
-int getFatBootSector(FatBootSector* bootSector)
+/******************************************************************************
+ * changeFilePath
+ *****************************************************************************/
+int changeFilePath(FilePath* filePath, const char* pathName, int pathType)
 {
-   memcpy(bootSector, &fatFileSystem.bootSector, sizeof(FatBootSector));
-   return 0;
-}
-
-int changeWorkingDirectory(const char* pathName)
-{
-  DirectoryEntry dir;
-  int index, i, rc;
+  DirectoryEntry* directory;
+  DirectoryEntry entry;
+  int index, i;
   
-  WorkingDirectory newWorkingDir = fatFileSystem.workingDirectory;
-  char* path = newWorkingDir.pathName;
+  // Store the new file path in another variable, in case the opeartion
+  // doesn't complete successfully.
+  FilePath newFilePath = *filePath;
+  char* path = newFilePath.pathName;
 
   if (pathName[0] == '/')
   {
     // pathName is an absolute path (starts with a '/')
-    // Reset the working directory to the root directory.
-    newWorkingDir.depthLevel = 1;
-    newWorkingDir.dirLevels[0].indexInParentDirectory = 0;
-    newWorkingDir.dirLevels[0].firstLogicalCluster = 0;
-    newWorkingDir.dirLevels[0].offsetInPathName = 1;
-    strcpy(newWorkingDir.pathName, "/");
+    // Reset the starting file path to the root directory.
+    initFilePath(&newFilePath);
   }
-  else if (newWorkingDir.depthLevel > 1)
+  else if (newFilePath.depthLevel > 1)
   {
     // pathName is a relative path.
-    path += strlen(newWorkingDir.pathName);
+    path += strlen(newFilePath.pathName);
   }
 
   // Duplicate the pathName string (because strtok() will modify it).
-  char* pathString = (char*) malloc(strlen(pathName) + 1);
-  strcpy(pathString, pathName);
+  char* tokenizedPath = (char*) malloc(strlen(pathName) + 1);
+  strcpy(tokenizedPath, pathName);
   
   // Get the first token (directory name) from the path string.
   char* token;
-  token = strtok(pathString, "/");
+  token = strtok(tokenizedPath, "/");
   
-  DirectoryLevel *dirLevels = &newWorkingDir.dirLevels[newWorkingDir.depthLevel - 1];
+  DirectoryLevel *dirLevels = &newFilePath.dirLevels[newFilePath.depthLevel - 1];
 
   // Handle one token (directory name) after another.
   while (token != NULL)
   {
-    rc = findDirectoryEntryByName(dirLevels->firstLogicalCluster,
-                                  &dir, &index, token);
-    
-    if (rc != 0)
-    {
-      printf("%s: No such file or directory\n", pathName);
-      return 1;
-    } 
-    else if (!(dir.attributes & 0x10))
+    // Can't increase depth if we've reached a file instead of a directory.
+    if (!newFilePath.isADirectory)
     {
       printf("%s: Not a directory\n", pathName);
-      return 2;
+      return -2;
+    }
+  
+    // Find the entry by token name in the top-most directory.
+    directory = openDirectory(dirLevels->firstLogicalCluster);
+    index = findEntryByName(directory, token);
+    if (index >= 0)
+      entry = directory[index];
+    closeDirectory(directory);
+    
+    if (index < 0)
+    {
+      printf("%s: No such file or directory\n", pathName);
+      return -1;
     }
     else
     {
-      // We found the directory.
+      // We found the next entry.
       dirLevels++;
-      dirLevels->firstLogicalCluster = dir.firstLogicalCluster;
+      dirLevels->firstLogicalCluster = entry.firstLogicalCluster;
       dirLevels->indexInParentDirectory = index;
-      if (newWorkingDir.depthLevel == 1)
+      if (newFilePath.depthLevel == 1)
         dirLevels->offsetInPathName = 1;
       else
-        dirLevels->offsetInPathName = strlen(newWorkingDir.pathName) + 1;
-      newWorkingDir.depthLevel++;
+        dirLevels->offsetInPathName = strlen(newFilePath.pathName) + 1;
+      newFilePath.depthLevel++;
+      newFilePath.isADirectory = isEntryADirectory(&entry);
 
-      // Add the directory name to the absolute working dir path name.
+      // Add the directory name to the absolute path name.
       *path = '/';
       path++;
       strcpy(path, token);
       path += strlen(token);
 
-      // Remove any path redundancies (. and ..) based on FLCs.
-      for (i = 0; i < newWorkingDir.depthLevel - 1; i++)
+      // Remove any path redundancies (. and ..) based on matching FLCs.
+      for (i = 0; i < newFilePath.depthLevel - 1; i++)
       {
-        if (dir.firstLogicalCluster == newWorkingDir.dirLevels[i].firstLogicalCluster)
+        if (entry.firstLogicalCluster ==
+            newFilePath.dirLevels[i].firstLogicalCluster)
         {
-          newWorkingDir.depthLevel = i + 1;
-          dirLevels = &newWorkingDir.dirLevels[i];
+          newFilePath.depthLevel = i + 1;
+          dirLevels = &newFilePath.dirLevels[i];
           
           if (i > 0)
           {
-            path = newWorkingDir.pathName + newWorkingDir.dirLevels[i + 1].offsetInPathName - 1;
+            path = newFilePath.pathName + newFilePath.dirLevels[i + 1]
+                   .offsetInPathName - 1;
             *path = '\0';
           }
           else
           {
-            path = newWorkingDir.pathName;
+            path = newFilePath.pathName;
             path[1] = '\0';
           }
           
@@ -281,122 +270,358 @@ int changeWorkingDirectory(const char* pathName)
       }
     }
 
-    // Move onto the next token (directory name).
+    // Move onto the next token (directory name) in the given path name.
     token = strtok(NULL, "/");
   }
-
-  fatFileSystem.workingDirectory = newWorkingDir;
-  //printf("%s\n", fatFileSystem.workingDirectory.pathName);
-  saveWorkingDirectory();
-  return 0;
-}
-
-const char* getWorkingDirectoryPathName()
-{
-  return fatFileSystem.workingDirectory.pathName;
-}
-
-int readLogicalClusterChain(unsigned short firstLogicalCluster,
-                            unsigned char** dataPtr,
-                            unsigned int* numBytes)
-{ 
-  *dataPtr = (unsigned char*) malloc(fatFileSystem.bootSector.bytesPerSector);
   
-  // Translate logical cluster number into physical cluster number.
-  unsigned int physicalCluster = firstLogicalCluster;
-  if (physicalCluster == 0)
-    physicalCluster = fatFileSystem.sectorOffsets.rootDirectory;
-  else
-    physicalCluster = fatFileSystem.sectorOffsets.dataRegion + firstLogicalCluster - 2;
-  
-  // TODO: Read the whole cluster chain.
-  read_sector(physicalCluster, *dataPtr);
-
-  return 0;
-}
-
-int findDirectoryEntryByName(unsigned short firstLogicalCluster,
-                             DirectoryEntry* entry,
-                             int* index,
-                             const char* name)
-{
-  unsigned char* dataPtr;
-  unsigned int numBytes;
-  char fileName[FAT12_MAX_FILE_NAME_LENGTH];
-  int k;
-  
-  // Read the directory's data containing its directory entries.
-  readLogicalClusterChain(firstLogicalCluster, &dataPtr, &numBytes);
-  DirectoryEntry* dir = (DirectoryEntry*) dataPtr; 
-  
-  // Loop through the directory entry's, searching by name.
-  for (k = 0; k < 20; k++)	
+  // Validate the file type.
+  if (newFilePath.isADirectory && pathType == PATH_TYPE_FILE)
   {
-    if ((unsigned char) dir[k].name[0] == DIR_ENTRY_FREE)
+    printf("%s: Is a directory\n", pathName);
+    return -2;
+  }
+  else if (!newFilePath.isADirectory && pathType == PATH_TYPE_DIRECTORY)
+  {
+    printf("%s: Not a directory\n", pathName);
+    return -2;
+  }
+
+  // Success!
+  *filePath = newFilePath;
+  return 0;
+}
+
+
+//-----------------------------------------------------------------------------
+// Directory interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * openDirectory
+ *****************************************************************************/
+DirectoryEntry* openDirectory(unsigned short flc)
+{
+  unsigned char* data;
+  unsigned int numBytes;
+  
+  if (readFileContents(flc, &data, &numBytes) == 0)
+  {
+    return (DirectoryEntry*) data;
+  }
+  else
+  {
+    return NULL;
+  }
+}
+
+/******************************************************************************
+ * closeDirectory
+ *****************************************************************************/
+void closeDirectory(DirectoryEntry* directory)
+{
+  free(directory);
+}
+
+/******************************************************************************
+ * saveDirectory
+ *****************************************************************************/
+int saveDirectory(unsigned short flc, DirectoryEntry* directory)
+{
+  // TODO: Implement for the 'rm', 'rmdir', 'touch', and 'mkdir' commands.
+}
+
+/******************************************************************************
+ * organizeDirectory
+ *****************************************************************************/
+void organizeDirectory(DirectoryEntry* directory)
+{
+  // TODO: Implement for the 'rm' and 'rmdir' commands.
+}
+
+/******************************************************************************
+ * removeEntry
+ *****************************************************************************/
+void removeEntry(DirectoryEntry* directory, int index)
+{
+  // TODO: Implement for the 'rm' and 'rmdir' commands.
+}
+
+/******************************************************************************
+ * findEntryByName
+ *****************************************************************************/
+int findEntryByName(DirectoryEntry* directory, const char* name)
+{
+  char entryName[FAT12_MAX_FILE_NAME_LENGTH];
+  DirectoryEntry* entry;
+  int index = 0;
+  
+  // Check each entry in the directory.
+  for (entry = getFirstValidEntry(directory, &index); entry != NULL;
+       entry = getNextValidEntry(entry, &index))
+  {
+    getEntryName(entry, entryName);
+    
+    // Check if we found the entry.
+    if (strcasecmp(entryName, name) == 0)
+    {
+      return index;
+    }
+  }
+  
+  return -1;
+}
+
+/******************************************************************************
+ * getFirstValidEntry
+ *****************************************************************************/
+DirectoryEntry* getFirstValidEntry(DirectoryEntry* entry, int* indexCounter)
+{
+  while (1)
+  {
+    if ((unsigned char) entry->name[0] == DIR_ENTRY_FREE)
     {
       // The directory entry is free (i.e., currently unused).
     }
-    else if ((unsigned char) dir[k].name[0] == DIR_ENTRY_END_OF_ENTRIES)
+    else if ((unsigned char) entry->name[0] == DIR_ENTRY_END_OF_ENTRIES)
     {      
       // This directory entry is free and all the remaining directory
       // entries in this directory are also free.
-      break;
+      return NULL;
     }
-    else if (dir[k].attributes == DIR_ENTRY_ATTRIB_LONG_FILE_NAME)
+    else if (entry->attributes == DIR_ENTRY_ATTRIB_LONG_FILE_NAME)
     {
       // Long filename, ignore.
     }
     else
-    {                 
-      int isSubDir = (dir[k].attributes & DIR_ENTRY_ATTRIB_SUBDIRECTORY);
-      entryToString(&dir[k], fileName);
-      
-      // Check if we found the entry.
-      if (strcasecmp(fileName, name) == 0)
-      {
-        *index = k;
-        *entry = dir[k];
-        free(dataPtr);
-        return 0;
-      }
-    }   
-  } 
+    {
+      // We found a valid entry!
+      return entry;
+    }
+    
+    entry++; // Check the next entry.
+    
+    if (indexCounter != NULL)
+      (*indexCounter)++;
+  }
   
-  free(dataPtr);
-  return -1;
+  return NULL;
 }
 
-int entryToString(DirectoryEntry* entry, char* string)
+/******************************************************************************
+ * getNextValidEntry
+ *****************************************************************************/
+DirectoryEntry* getNextValidEntry(DirectoryEntry* entry, int* indexCounter)
 {
-  memset(string, 0, FAT12_MAX_FILE_NAME_LENGTH);
+  if (indexCounter != NULL)
+    (*indexCounter)++;
+  entry++;
+  return getFirstValidEntry(entry, indexCounter);
+}
 
-  int counter = 0;
-  int i;
+/******************************************************************************
+ * isDirectoryEmpty
+ *****************************************************************************/
+int isDirectoryEmpty(DirectoryEntry* directory)
+{
+  char name[FAT12_MAX_FILE_NAME_LENGTH];
+  DirectoryEntry* entry;
+  int index = 0;
+  
+  // Check each entry in the directory.
+  for (entry = getFirstValidEntry(directory, &index); entry != NULL;
+       entry = getNextValidEntry(entry, &index))
+  {
+    getEntryName(entry, name);
+    
+    // Check if this entry is not . or ..
+    if (strcmp(name, ".") != 0 && strcmp(name, "..") != 0)
+    {
+      return 0;
+    }
+  }
+  
+  return 1; // The directory is either empty or contains only . and ..
+}
+
+/******************************************************************************
+ * createNewEntry
+ *****************************************************************************/
+int createNewEntry(unsigned short flc, DirectoryEntry** directory,
+                   const char* name, int* newEntryIndex)
+{
+  // TODO: Implement for the 'touch' and 'mkdir' commands.
+}
+
+
+//-----------------------------------------------------------------------------
+// Directory Entry interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * isEntryADirectory
+ *****************************************************************************/
+int isEntryADirectory(DirectoryEntry* entry)
+{
+  if (entry->attributes & DIR_ENTRY_ATTRIB_SUBDIRECTORY)
+    return 1;
+  else
+    return 0;
+}
+
+/******************************************************************************
+ * getEntryName
+ *****************************************************************************/
+void getEntryName(DirectoryEntry* entry, char* nameString)
+{
   const int nameLength = 8;
   const int extLength = 3;
+  int counter = 0;
+  int i;
 
   // Grab the name.
   for (i = 0; i < nameLength; i++)
   {
     if (entry->name[i] == ' ')
       break;
-    string[counter++] = entry->name[i];
+    nameString[counter++] = entry->name[i];
   }
 
   // Grab the extension.
   if (entry->extension[0] != ' ')
   {
-    string[counter++] = '.';
+    nameString[counter++] = '.';
     for (i = 0; i < extLength; i++)
     {
       if (entry->extension[i] == ' ')
         break;
-      string[counter++] = entry->extension[i];
+      nameString[counter++] = entry->extension[i];
     }
   }
+  
+  // Null terminate the string.
+  nameString[counter] = '\0';
+}
+
+
+//-----------------------------------------------------------------------------
+// File Data interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * readFileContents
+ *****************************************************************************/
+int readFileContents(unsigned short flc, unsigned char** data,
+                     unsigned int* numBytes)
+{
+  unsigned int numSectors = 1;
+  
+  // TODO: Count the number of sectors in the cluster chain.
+  
+  *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+  *data = (unsigned char*) malloc(*numBytes);
+  
+  // TODO: Make this actually follow the cluster chain instead of reading only
+  // the first cluster.
+  
+  // Translate logical cluster number into physical cluster number.
+  unsigned int physicalCluster = flc;
+  if (physicalCluster == 0)
+    physicalCluster = fatFileSystem.sectorOffsets.rootDirectory;
+  else
+    physicalCluster = fatFileSystem.sectorOffsets.dataRegion + flc - 2;
+  
+  read_sector(physicalCluster, *data);
 
   return 0;
 }
 
+/******************************************************************************
+ * writeFileContents
+ *****************************************************************************/
+int writeFileContents(unsigned short flc, unsigned char* data,
+                      unsigned int numBytes)
+{
+  // TODO: Implement for the 'touch' and 'mkdir' commands.
+}
+
+/******************************************************************************
+ * freeFileContents
+ *****************************************************************************/
+int freeFileContents(unsigned short flc)
+{
+  // TODO: Implement this for the 'rm' and 'rmdir' commands.
+}
+
+
+//-----------------------------------------------------------------------------
+// Internal Functions
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * loadBootSector
+ *****************************************************************************/
+static int loadBootSector()
+{
+  // Make sure we're at the beginning of the disk image file.
+  if (fseek(fatFileSystem.fileSystemId, 0, SEEK_SET) != 0)
+  {
+    return -1;
+  }
+
+  // Read the boot sector from the disk image file.
+  int bytesRead = fread(&fatFileSystem.bootSector, sizeof(char),
+                        sizeof(FatBootSector), fatFileSystem.fileSystemId);
+  if (bytesRead != sizeof(FatBootSector))
+  {
+    return -1;
+  }
+
+  // Calculate some sector offsets.
+  fatFileSystem.sectorOffsets.fatTables =
+    fatFileSystem.bootSector.numReservedSectors;
+  
+  fatFileSystem.sectorOffsets.rootDirectory =
+    fatFileSystem.sectorOffsets.fatTables +
+    (fatFileSystem.bootSector.sectorsPerFAT *
+    fatFileSystem.bootSector.numFATs);
+    
+  fatFileSystem.sectorOffsets.dataRegion = 
+    fatFileSystem.sectorOffsets.rootDirectory +
+    ((fatFileSystem.bootSector.maxNumRootDirEntries * sizeof(DirectoryEntry)) /
+    fatFileSystem.bootSector.bytesPerSector);
+
+  return 0;
+}
+
+/******************************************************************************
+ * readFatTable
+ *****************************************************************************/
+static unsigned char* readFatTable(int fatIndex)
+{
+  // Allocate the FAT buffer.
+  unsigned char* buffer = (unsigned char*) malloc(fatFileSystem.bootSector
+    .bytesPerSector * fatFileSystem.bootSector.sectorsPerFAT);
+  
+  // Calculate the table's sector number.
+  unsigned int sector = fatFileSystem.sectorOffsets.fatTables +
+                        (fatIndex * fatFileSystem.bootSector.sectorsPerFAT);
+  
+  // Read the FAT table from the file.
+  if (read_sector(sector, buffer) == -1)
+  {
+    free(buffer);
+    return NULL;
+  }
+
+  return buffer;
+}
+
+/******************************************************************************
+ * freeFatTable
+ *****************************************************************************/
+static void freeFatTable(unsigned char* fatTable)
+{
+  free(fatTable);
+}
 
 
