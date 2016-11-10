@@ -89,7 +89,19 @@ void getFatBootSector(FatBootSector* bootSector)
  *****************************************************************************/
 void getNumberOfUsedBlocks(int* numUsedBlocks, int* totalBlocks)
 {
-  // TODO: Implement this for 'df' command.
+  *numUsedBlocks = 0;
+  *totalBlocks = fatFileSystem.bootSector.totalSectorCount -
+                 fatFileSystem.sectorOffsets.dataRegion;
+  
+  int sector = fatFileSystem.sectorOffsets.dataRegion;
+  int entry;
+  
+  for (; sector < fatFileSystem.bootSector.totalSectorCount; sector++)
+  {
+    entry = get_fat_entry(sector, fatFileSystem.fatTable);
+    if (entry != 0x00)
+      (*numUsedBlocks)++;
+  }
 }
 
 
