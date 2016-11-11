@@ -89,15 +89,16 @@ void getFatBootSector(FatBootSector* bootSector)
 /******************************************************************************
  * getNumberOfUsedBlocks
  *****************************************************************************/
-void getNumberOfUsedBlocks(unsigned int* numUsedBlocks,
-                           unsigned int* totalBlocks)
+void getNumberOfUsedBlocks(unsigned short* numUsedBlocks,
+                           unsigned short* totalBlocks)
 {
-  unsigned int entryNumber;
-  unsigned int entryValue;
-  unsigned int entryType;
+  unsigned short entryNumber;
+  unsigned short entryValue;
+  int entryType;
   
-  unsigned int totalEntries = fatFileSystem.bootSector.totalSectorCount -
-                              fatFileSystem.sectorOffsets.dataRegion + 2;
+  unsigned short totalEntries = (unsigned short)
+    (fatFileSystem.bootSector.totalSectorCount -
+    fatFileSystem.sectorOffsets.dataRegion + 2);
   
   *totalBlocks = totalEntries - 2;
   *numUsedBlocks = 0;
@@ -345,7 +346,10 @@ void closeDirectory(DirectoryEntry* directory)
  *****************************************************************************/
 int saveDirectory(unsigned short flc, DirectoryEntry* directory)
 {
-  // TODO: Implement for the 'rm', 'rmdir', 'touch', and 'mkdir' commands.
+  unsigned short numSectors = getFatEntryChainLength(flc);
+  unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+  
+  writeFileContents(flc, (unsigned char*) directory, numBytes);
 }
 
 /******************************************************************************
@@ -467,7 +471,63 @@ int isDirectoryEmpty(DirectoryEntry* directory)
 int createNewEntry(unsigned short flc, DirectoryEntry** directory,
                    const char* name, int* newEntryIndex)
 {
-  // TODO: Implement for the 'touch' and 'mkdir' commands.
+  int index = 0;
+  DirectoryEntry* entry = *directory;
+
+  unsigned short bytesPerSector = fatFileSystem.bootSector.bytesPerSector;
+  unsigned short numSectorsForDir = getFatEntryChainLength(flc);
+  int maxNumEntries = ((numSectorsForDir * bytesPerSector) /
+                      sizeof(DirectoryEntry)) - 1;
+  
+  // Find an unused entry in the given directory.
+  while (index < maxNumEntries)
+  {
+    if ((unsigned char) entry->name[0] == DIR_ENTRY_FREE)
+    {
+      // The directory entry is free (i.e., currently unused).
+      break;
+    }
+    else if ((unsigned char) entry->name[0] == DIR_ENTRY_END_OF_ENTRIES)
+    {      
+      // This directory entry is free and all the remaining directory
+      // entries in this directory are also free.
+      (entry + 1)->name[0] = DIR_ENTRY_END_OF_ENTRIES;
+      break;
+    }
+    
+    entry++;
+    index++;
+  }
+  
+  // Increase the size of the directory if it is full.
+  if (index == maxNumEntries)
+  {
+    numSectorsForDir++;
+    *directory = (DirectoryEntry*) realloc(*directory, numSectorsForDir * bytesPerSector);
+    int rc = writeFileContents(flc, (unsigned char*) *directory,
+                               numSectorsForDir * bytesPerSector);
+    if (rc != 0)
+      return rc;
+    
+    // TODO: remove this debug print.
+    printf("Increased directory size to %u\n", numSectorsForDir);
+    
+    entry = (*directory) + index;
+    (entry + 1)->name[0] = DIR_ENTRY_END_OF_ENTRIES;
+  }
+  
+  // Initialize the entry's information.
+  setEntryName(entry, name);
+  entry->attributes = 0;
+  entry->fileSize = 0;
+  
+  // Allocate a data sector for the entry.
+  entry->firstLogicalCluster = 0;
+  findUnusedFatEntry(&entry->firstLogicalCluster);
+  setFatEntry(entry->firstLogicalCluster, 0xFFF);
+
+  *newEntryIndex = index;
+  return 0;
 }
 
 
@@ -520,6 +580,39 @@ void getEntryName(DirectoryEntry* entry, char* nameString)
   nameString[counter] = '\0';
 }
 
+/******************************************************************************
+ * setEntryName
+ *****************************************************************************/
+void setEntryName(DirectoryEntry* entry, const char* nameString)
+{
+  // Fill the entry's name & extension with spaces.
+  memset(entry->name, ' ', sizeof(entry->name));
+  memset(entry->extension, ' ', sizeof(entry->extension));
+  
+  // Split the name and extension by the first dot in the given string.
+  const char* startOfName = nameString;
+  const char* endOfName   = nameString + sizeof(entry->name);
+  const char* startOfExt  = nameString;
+  const char* endOfExt    = nameString;
+  const char* dot         = strchr(nameString, '.');
+  
+  if (dot != NULL)
+  {
+    startOfExt = dot + 1;
+    endOfExt = dot + 1 + sizeof(entry->extension);
+    if (dot < endOfName)
+      endOfName = dot;
+  }
+  
+  // Write the characters into the entry's name.
+  const char* c;
+  int i;
+  for (i = 0, c = startOfName; c != endOfName && *c != '\0'; c++)
+    entry->name[i++] = toupper(*c);
+  for (i = 0, c = startOfExt; c != endOfExt && *c != '\0'; c++)
+    entry->extension[i++] = toupper(*c);
+}
+
 
 //-----------------------------------------------------------------------------
 // File Data interface
@@ -531,21 +624,14 @@ void getEntryName(DirectoryEntry* entry, char* nameString)
 int readFileContents(unsigned short flc, unsigned char** data,
                      unsigned int* numBytes)
 {
-  unsigned int entryValue;
-  unsigned int entryType;
-  unsigned int numSectors;
-  unsigned int sectorIndex;
+  unsigned short entryValue;
+  int entryType;
+  unsigned short numSectors;
+  unsigned short sectorIndex;
   unsigned char* sectorData;
   
   // Count the number of sectors used by the given FLC.
-  getFatEntry(flc, &entryValue, &entryType);
-  numSectors = 1;
-  
-  while (entryType != FAT_ENTRY_TYPE_LAST_SECTOR)
-  {
-    getFatEntry(entryValue, &entryValue, &entryType);
-    numSectors++;
-  }
+  numSectors = getFatEntryChainLength(flc);
   
   *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
   *data = (unsigned char*) malloc(*numBytes);
@@ -570,13 +656,13 @@ int readFileContents(unsigned short flc, unsigned char** data,
 int writeFileContents(unsigned short flc, unsigned char* data,
                       unsigned int numBytes)
 {
-  unsigned int sectorIndex;
-  unsigned int entryNumber;
-  unsigned int entryValue;
-  unsigned int entryType;
-  unsigned int numNeededSectors;
-  unsigned int numUsedSectors;
-  unsigned int temp;
+  unsigned short sectorIndex;
+  unsigned short entryNumber;
+  unsigned short entryValue;
+  int entryType;
+  unsigned short numNeededSectors;
+  unsigned short numUsedSectors;
+  unsigned short temp;
   
   unsigned short bytesPerSector = fatFileSystem.bootSector.bytesPerSector;
   
@@ -585,33 +671,19 @@ int writeFileContents(unsigned short flc, unsigned char* data,
   if (numNeededSectors == 0)
     numNeededSectors = 1;
   
-  printf("writeFileContents: flc = %u, numBytes = %u\n", flc, numBytes);
-  
-  // Count the current number of sectors used by the given FLC.
-  getFatEntry(flc, &entryValue, &entryType);
-  numUsedSectors = 1;
-  printf("[ %u", flc);
-  
-  while (entryType == FAT_ENTRY_TYPE_NEXT_SECTOR)
-  {
-    printf(" -> %u", entryValue);
-    getFatEntry(entryValue, &entryValue, &entryType);
-    numUsedSectors++;
-  }
-  printf(" ]\n");
-  printf("numNeededSectors = %u\n", numNeededSectors);
-  printf("numUsedSectors = %u\n", numUsedSectors);
-  
+  // Count the current number of sectors used by the existing FLC.
+  numUsedSectors = getFatEntryChainLength(flc);
+
   // Check if there isn't enough available sectors for to write all the data.
   if (numNeededSectors > numUsedSectors)
   {
-    unsigned int totalSectors;
-    unsigned int numUsedBlocks;
+    unsigned short totalSectors;
+    unsigned short numUsedBlocks;
     
     getNumberOfUsedBlocks(&numUsedBlocks, &totalSectors);
     
-    unsigned int numAvailableSectors = totalSectors - numUsedBlocks + 
-                                       numUsedSectors;
+    unsigned short numAvailableSectors = totalSectors - numUsedBlocks + 
+                                         numUsedSectors;
     
     if (numAvailableSectors < numNeededSectors)
     {
@@ -620,14 +692,11 @@ int writeFileContents(unsigned short flc, unsigned char* data,
     }
   }
   
-  // There is enough space, write the data to the sectors.
   entryNumber = flc;
-  unsigned int maxNeededUsedSectors = numNeededSectors;
+  unsigned short maxNeededUsedSectors = numNeededSectors;
   if (numUsedSectors > numNeededSectors)
     maxNeededUsedSectors = numUsedSectors; 
     
-  printf("maxNeededUsedSectors = %u\n", maxNeededUsedSectors);
-  
   // Write the data to the needed sectors, and free any uneeded 
   // but previously-used sectors.
   for (sectorIndex = 0; sectorIndex < maxNeededUsedSectors; sectorIndex++)
@@ -637,9 +706,6 @@ int writeFileContents(unsigned short flc, unsigned char* data,
     // Write the data into this sector.
     if (sectorIndex < numNeededSectors)
     {
-      printf("Writing %u bytes to logical sector %u\n",
-             numBytes > bytesPerSector ? bytesPerSector : numBytes,
-             entryNumber);
       if (numBytes > 0)
       {
         write_sector(logicalToPhysicalCluster(entryNumber), data, numBytes);
@@ -649,7 +715,6 @@ int writeFileContents(unsigned short flc, unsigned char* data,
     }
     else
     {
-      printf("Freeing sector %u\n", entryNumber);
       setFatEntry(entryNumber, 0x000);
     }
     
@@ -673,15 +738,6 @@ int writeFileContents(unsigned short flc, unsigned char* data,
     }
   }
   
-  getFatEntry(flc, &entryValue, &entryType);
-  printf("[ %u", flc);
-  while (entryType != FAT_ENTRY_TYPE_LAST_SECTOR)
-  {
-    printf(" -> %u", entryValue);
-    getFatEntry(entryValue, &entryValue, &entryType);
-  }
-  printf(" ]\n");
-  
   return 0;
 }
 
@@ -701,7 +757,7 @@ int freeFileContents(unsigned short flc)
 /******************************************************************************
  * getFatEntry
  *****************************************************************************/
-void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
+void getFatEntry(unsigned short entryNumber, unsigned short* entryValue,
                 int* entryType)
 {
   *entryValue = get_fat_entry(entryNumber, fatFileSystem.fatTable);
@@ -721,22 +777,24 @@ void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
 /******************************************************************************
  * setFatEntry
  *****************************************************************************/
-void setFatEntry(unsigned int entryNumber, unsigned int entryValue)
+void setFatEntry(unsigned short entryNumber, unsigned short entryValue)
 {
-  set_fat_entry(entryNumber, entryValue, fatFileSystem.fatTable);
+  set_fat_entry((unsigned int) entryNumber,
+                (unsigned int) entryValue,
+                fatFileSystem.fatTable);
 }
 
 /******************************************************************************
  * findUnusedFatEntry
  *****************************************************************************/
-int findUnusedFatEntry(unsigned int* entryNumber)
+int findUnusedFatEntry(unsigned short* entryNumber)
 {
-  unsigned int tempEntryNumber;
-  unsigned int entryValue;
-  unsigned int entryType;
+  unsigned short tempEntryNumber;
+  unsigned short entryValue;
+  int entryType;
   
-  unsigned int totalEntries = fatFileSystem.bootSector.totalSectorCount -
-                              fatFileSystem.sectorOffsets.dataRegion + 2;
+  unsigned short totalEntries = fatFileSystem.bootSector.totalSectorCount -
+                                fatFileSystem.sectorOffsets.dataRegion + 2;
   
   for (tempEntryNumber = 0; tempEntryNumber < totalEntries; tempEntryNumber++)
   {
@@ -752,9 +810,36 @@ int findUnusedFatEntry(unsigned int* entryNumber)
 }
 
 /******************************************************************************
+ * getFatEntryChainLength
+ *****************************************************************************/
+unsigned short getFatEntryChainLength(unsigned short firstEntryNumber)
+{
+  unsigned short entryValue;
+  unsigned short length;
+  int entryType;
+  
+  // Get the first entry.
+  getFatEntry(firstEntryNumber, &entryValue, &entryType);
+  
+  if (entryType != FAT_ENTRY_TYPE_NEXT_SECTOR &&
+      entryType != FAT_ENTRY_TYPE_LAST_SECTOR)
+  {
+    return 0;
+  }
+  
+  // Count the current number of entries in a chain.
+  for (length = 1; entryType == FAT_ENTRY_TYPE_NEXT_SECTOR; length++)
+  {
+    getFatEntry(entryValue, &entryValue, &entryType);
+  }
+  
+  return length;
+}
+
+/******************************************************************************
  * logicalToPhysicalCluster
  *****************************************************************************/
-unsigned int logicalToPhysicalCluster(unsigned int logicalCluster)
+unsigned short logicalToPhysicalCluster(unsigned short logicalCluster)
 {
   if (logicalCluster == 0)
     return fatFileSystem.sectorOffsets.rootDirectory;

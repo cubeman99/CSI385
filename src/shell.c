@@ -27,9 +27,6 @@ void readCommand(char* command, char** params);
 
 int main()
 {
-   if (initializeFatFileSystem() != 0)
-    return -1;
-  
    char command[32];
    char* params[32];
    int status;
@@ -70,17 +67,12 @@ int main()
       }
    }   
 
-   terminateFatFileSystem();
    return 0;
 }
 
 
 void displayPrompt()
 {
-  //loadWorkingDirectory();
-  //TODO: Make the prompt show the working directory.
-  // printf("%s $ \n", getWorkingDirectoryPathName());
-
   printf("Enter a command: ");
 }
 

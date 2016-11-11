@@ -231,8 +231,8 @@ void getFatBootSector(FatBootSector* bootSector);
  *
  * Return - none
  *****************************************************************************/
-void getNumberOfUsedBlocks(unsigned int* numUsedBlocks,
-                           unsigned int* totalBlocks);
+void getNumberOfUsedBlocks(unsigned short* numUsedBlocks,
+                           unsigned short* totalBlocks);
 
 
 //-----------------------------------------------------------------------------
@@ -429,6 +429,15 @@ int isEntryADirectory(DirectoryEntry* entry);
  *****************************************************************************/
 void getEntryName(DirectoryEntry* entry, char* nameString);
 
+/******************************************************************************
+ * setEntryName - Set the name of a directory entry.
+ *
+ * entry - The directory entry to set the name for
+ * nameString - the desired name of the entry
+ * 
+ * Return - none
+ *****************************************************************************/
+void setEntryName(DirectoryEntry* entry, const char* nameString);
 
 //-----------------------------------------------------------------------------
 // File Data interface
@@ -485,7 +494,7 @@ int freeFileContents(unsigned short flc);
  * 
  * Return - none
  *****************************************************************************/
-void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
+void getFatEntry(unsigned short entryNumber, unsigned short* entryValue,
                 int* entryType);
 
 /******************************************************************************
@@ -496,7 +505,7 @@ void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
  * 
  * Return - none
  *****************************************************************************/
-void setFatEntry(unsigned int entryNumber, unsigned int entryValue);
+void setFatEntry(unsigned short entryNumber, unsigned short entryValue);
 
 /******************************************************************************
  * findUnusedFatEntry - Find an unused FAT entry, getting its entry number.
@@ -505,7 +514,16 @@ void setFatEntry(unsigned int entryNumber, unsigned int entryValue);
  * 
  * Return - 0 on success, -1 on failure
  *****************************************************************************/
-int findUnusedFatEntry(unsigned int* entryNumber);
+int findUnusedFatEntry(unsigned short* entryNumber);
+
+/******************************************************************************
+ * getFatEntryChainLength - TODO
+ *
+ * firstEntryNumber - TODO
+ * 
+ * Return - TODO
+ *****************************************************************************/
+unsigned short getFatEntryChainLength(unsigned short firstEntryNumber);
 
 /******************************************************************************
  * logicalToPhysicalCluster - Translate a logical cluster number to a physical
@@ -515,7 +533,7 @@ int findUnusedFatEntry(unsigned int* entryNumber);
  * 
  * Return - the corresponding physical cluster number
  *****************************************************************************/
-unsigned int logicalToPhysicalCluster(unsigned int logicalCluster);
+unsigned short logicalToPhysicalCluster(unsigned short logicalCluster);
 
 //-----------------------------------------------------------------------------
 // Global Variables

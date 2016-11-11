@@ -20,12 +20,12 @@ int main(int argc, char* argv[])
   if (initializeFatFileSystem() != 0)
     return -1;
   
-  unsigned int totalBlocks;
-  unsigned int numUsedBlocks;
+  unsigned short totalBlocks;
+  unsigned short numUsedBlocks;
   
   getNumberOfUsedBlocks(&numUsedBlocks, &totalBlocks);
   
-  unsigned int numAvailableBlocks = totalBlocks - numUsedBlocks;
+  unsigned short numAvailableBlocks = totalBlocks - numUsedBlocks;
   float usePercent = ((float) numUsedBlocks / (float) totalBlocks) * 100.0f;
   
   printf("%15s%10s%15s%11s\n", "512K-blocks", "Used", "Available", "Use %");
