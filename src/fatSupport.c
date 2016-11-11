@@ -64,7 +64,7 @@ int read_sector(unsigned int sector_number, unsigned char* buffer)
  * Return: the number of bytes written, or -1 if the read fails.
  ****************************************************************************/
 
-int write_sector(unsigned int sector_number, unsigned char* buffer) 
+int write_sector(unsigned int sector_number, unsigned char* buffer, unsigned int bufferSize) 
 {
    int bytes_written;
 
@@ -74,11 +74,15 @@ int write_sector(unsigned int sector_number, unsigned char* buffer)
       printf("Error accessing sector %d\n", sector_number);
       return -1;
    }
+   
+   int numBytesToWrite = fatFileSystem.bootSector.bytesPerSector;
+   if (bufferSize < numBytesToWrite)
+     numBytesToWrite = bufferSize;
 
-   bytes_written = fwrite(buffer, sizeof(char), fatFileSystem.bootSector
-                          .bytesPerSector, fatFileSystem.fileSystemId);
+   bytes_written = fwrite(buffer, sizeof(char), numBytesToWrite,
+                          fatFileSystem.fileSystemId);
 
-   if (bytes_written != fatFileSystem.bootSector.bytesPerSector) 
+   if (bytes_written != numBytesToWrite) 
    {
       printf("Error reading sector %d\n", sector_number);
       return -1;

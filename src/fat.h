@@ -81,8 +81,19 @@ typedef enum
   DIR_ENTRY_ATTRIB_VOLUME_LABEL = 0x08,
   DIR_ENTRY_ATTRIB_SUBDIRECTORY = 0x10,
   DIR_ENTRY_ATTRIB_ARCHIVE      = 0x20,
-  
 } DirectoryEntryAttribs;
+
+/******************************************************************************
+ * FatEntryType - possible types of a FAT entry's value.
+ *****************************************************************************/
+typedef enum
+{
+  FAT_ENTRY_TYPE_UNUSED      = 0,
+  FAT_ENTRY_TYPE_RESERVED    = 1,
+  FAT_ENTRY_TYPE_BAD         = 2,
+  FAT_ENTRY_TYPE_LAST_SECTOR = 3,
+  FAT_ENTRY_TYPE_NEXT_SECTOR = 4,
+} FatEntryType;
 
 #pragma pack(1)
 
@@ -220,7 +231,8 @@ void getFatBootSector(FatBootSector* bootSector);
  *
  * Return - none
  *****************************************************************************/
-void getNumberOfUsedBlocks(int* numUsedBlocks, int* totalBlocks);
+void getNumberOfUsedBlocks(unsigned int* numUsedBlocks,
+                           unsigned int* totalBlocks);
 
 
 //-----------------------------------------------------------------------------
@@ -432,7 +444,8 @@ void getEntryName(DirectoryEntry* entry, char* nameString);
  * 
  * Return - 0 on success, -1 on failure
  *****************************************************************************/
-int readFileContents(unsigned short flc, unsigned char** data, unsigned int* numBytes);
+int readFileContents(unsigned short flc, unsigned char** data,
+                     unsigned int* numBytes);
 
 /******************************************************************************
  * writeFileContents - Write data to a file's contents (overwriting any
@@ -445,7 +458,8 @@ int readFileContents(unsigned short flc, unsigned char** data, unsigned int* num
  * Return - 0 on success, -1 on failure (if there wasn't enough space on the
  *          file system
  *****************************************************************************/
-int writeFileContents(unsigned short flc, unsigned char* data, unsigned int numBytes);
+int writeFileContents(unsigned short flc, unsigned char* data,
+                      unsigned int numBytes);
 
 /******************************************************************************
  * freeFileContents - Free a file's contents, freeing the logical clusters it
@@ -457,6 +471,51 @@ int writeFileContents(unsigned short flc, unsigned char* data, unsigned int numB
  *****************************************************************************/
 int freeFileContents(unsigned short flc);
 
+
+//-----------------------------------------------------------------------------
+// FAT Table Interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * getFatEntry - TODO
+ *
+ * entryNumber - TODO
+ * entryValue - TODO
+ * entryType - TODO
+ * 
+ * Return - none
+ *****************************************************************************/
+void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
+                int* entryType);
+
+/******************************************************************************
+ * setFatEntry - TODO
+ *
+ * entryNumber - TODO
+ * entryValue - TODO
+ * 
+ * Return - none
+ *****************************************************************************/
+void setFatEntry(unsigned int entryNumber, unsigned int entryValue);
+
+/******************************************************************************
+ * findUnusedFatEntry - Find an unused FAT entry, getting its entry number.
+ *
+ * entryNumber - TODO
+ * 
+ * Return - 0 on success, -1 on failure
+ *****************************************************************************/
+int findUnusedFatEntry(unsigned int* entryNumber);
+
+/******************************************************************************
+ * logicalToPhysicalCluster - Translate a logical cluster number to a physical
+ *                            cluster number.
+ *
+ * entryNumber - logicalCluster
+ * 
+ * Return - the corresponding physical cluster number
+ *****************************************************************************/
+unsigned int logicalToPhysicalCluster(unsigned int logicalCluster);
 
 //-----------------------------------------------------------------------------
 // Global Variables

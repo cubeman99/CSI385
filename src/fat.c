@@ -29,6 +29,7 @@ FatFileSystem fatFileSystem;
 
 static int loadBootSector();
 static unsigned char* readFatTable(int fatIndex);
+static void writeFatTable(int fatIndex, unsigned char* fatTable);
 static void freeFatTable(unsigned char* fatTable);
 
 
@@ -72,7 +73,8 @@ int initializeFatFileSystem()
  *****************************************************************************/
 void terminateFatFileSystem()
 {
-  free(fatFileSystem.fatTable);
+  writeFatTable(0, fatFileSystem.fatTable);
+  freeFatTable(fatFileSystem.fatTable);
   fclose(fatFileSystem.fileSystemId);
 }
 
@@ -87,19 +89,23 @@ void getFatBootSector(FatBootSector* bootSector)
 /******************************************************************************
  * getNumberOfUsedBlocks
  *****************************************************************************/
-void getNumberOfUsedBlocks(int* numUsedBlocks, int* totalBlocks)
+void getNumberOfUsedBlocks(unsigned int* numUsedBlocks,
+                           unsigned int* totalBlocks)
 {
+  unsigned int entryNumber;
+  unsigned int entryValue;
+  unsigned int entryType;
+  
+  unsigned int totalEntries = fatFileSystem.bootSector.totalSectorCount -
+                              fatFileSystem.sectorOffsets.dataRegion + 2;
+  
+  *totalBlocks = totalEntries - 2;
   *numUsedBlocks = 0;
-  *totalBlocks = fatFileSystem.bootSector.totalSectorCount -
-                 fatFileSystem.sectorOffsets.dataRegion;
   
-  int sector = fatFileSystem.sectorOffsets.dataRegion;
-  int entry;
-  
-  for (; sector < fatFileSystem.bootSector.totalSectorCount; sector++)
+  for (entryNumber = 2; entryNumber < totalEntries; entryNumber++)
   {
-    entry = get_fat_entry(sector, fatFileSystem.fatTable);
-    if (entry != 0x00)
+    getFatEntry(entryNumber, &entryValue, &entryType);
+    if (entryType != FAT_ENTRY_TYPE_UNUSED)
       (*numUsedBlocks)++;
   }
 }
@@ -525,24 +531,35 @@ void getEntryName(DirectoryEntry* entry, char* nameString)
 int readFileContents(unsigned short flc, unsigned char** data,
                      unsigned int* numBytes)
 {
-  unsigned int numSectors = 1;
+  unsigned int entryValue;
+  unsigned int entryType;
+  unsigned int numSectors;
+  unsigned int sectorIndex;
+  unsigned char* sectorData;
   
-  // TODO: Count the number of sectors in the cluster chain.
+  // Count the number of sectors used by the given FLC.
+  getFatEntry(flc, &entryValue, &entryType);
+  numSectors = 1;
+  
+  while (entryType != FAT_ENTRY_TYPE_LAST_SECTOR)
+  {
+    getFatEntry(entryValue, &entryValue, &entryType);
+    numSectors++;
+  }
   
   *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
   *data = (unsigned char*) malloc(*numBytes);
   
-  // TODO: Make this actually follow the cluster chain instead of reading only
-  // the first cluster.
-  
-  // Translate logical cluster number into physical cluster number.
-  unsigned int physicalCluster = flc;
-  if (physicalCluster == 0)
-    physicalCluster = fatFileSystem.sectorOffsets.rootDirectory;
-  else
-    physicalCluster = fatFileSystem.sectorOffsets.dataRegion + flc - 2;
-  
-  read_sector(physicalCluster, *data);
+  // Read the data from each sector.
+  entryValue = flc;
+  sectorData = *data;
+    
+  for (sectorIndex = 0; sectorIndex < numSectors; sectorIndex++)
+  {
+    read_sector(logicalToPhysicalCluster(entryValue), sectorData);
+    getFatEntry(entryValue, &entryValue, &entryType);
+    sectorData += fatFileSystem.bootSector.bytesPerSector;
+  }
 
   return 0;
 }
@@ -553,7 +570,119 @@ int readFileContents(unsigned short flc, unsigned char** data,
 int writeFileContents(unsigned short flc, unsigned char* data,
                       unsigned int numBytes)
 {
-  // TODO: Implement for the 'touch' and 'mkdir' commands.
+  unsigned int sectorIndex;
+  unsigned int entryNumber;
+  unsigned int entryValue;
+  unsigned int entryType;
+  unsigned int numNeededSectors;
+  unsigned int numUsedSectors;
+  unsigned int temp;
+  
+  unsigned short bytesPerSector = fatFileSystem.bootSector.bytesPerSector;
+  
+  // Count the number of needed sectors to write numBytes.
+  numNeededSectors = (numBytes + bytesPerSector - 1) / bytesPerSector;
+  if (numNeededSectors == 0)
+    numNeededSectors = 1;
+  
+  printf("writeFileContents: flc = %u, numBytes = %u\n", flc, numBytes);
+  
+  // Count the current number of sectors used by the given FLC.
+  getFatEntry(flc, &entryValue, &entryType);
+  numUsedSectors = 1;
+  printf("[ %u", flc);
+  
+  while (entryType == FAT_ENTRY_TYPE_NEXT_SECTOR)
+  {
+    printf(" -> %u", entryValue);
+    getFatEntry(entryValue, &entryValue, &entryType);
+    numUsedSectors++;
+  }
+  printf(" ]\n");
+  printf("numNeededSectors = %u\n", numNeededSectors);
+  printf("numUsedSectors = %u\n", numUsedSectors);
+  
+  // Check if there isn't enough available sectors for to write all the data.
+  if (numNeededSectors > numUsedSectors)
+  {
+    unsigned int totalSectors;
+    unsigned int numUsedBlocks;
+    
+    getNumberOfUsedBlocks(&numUsedBlocks, &totalSectors);
+    
+    unsigned int numAvailableSectors = totalSectors - numUsedBlocks + 
+                                       numUsedSectors;
+    
+    if (numAvailableSectors < numNeededSectors)
+    {
+      printf("Error: not enough available blocks to write %u bytes\n", numBytes);
+      return -1;
+    }
+  }
+  
+  // There is enough space, write the data to the sectors.
+  entryNumber = flc;
+  unsigned int maxNeededUsedSectors = numNeededSectors;
+  if (numUsedSectors > numNeededSectors)
+    maxNeededUsedSectors = numUsedSectors; 
+    
+  printf("maxNeededUsedSectors = %u\n", maxNeededUsedSectors);
+  
+  // Write the data to the needed sectors, and free any uneeded 
+  // but previously-used sectors.
+  for (sectorIndex = 0; sectorIndex < maxNeededUsedSectors; sectorIndex++)
+  {
+    getFatEntry(entryNumber, &entryValue, &entryType);
+    
+    // Write the data into this sector.
+    if (sectorIndex < numNeededSectors)
+    {
+      printf("Writing %u bytes to logical sector %u\n",
+             numBytes > bytesPerSector ? bytesPerSector : numBytes,
+             entryNumber);
+      if (numBytes > 0)
+      {
+        write_sector(logicalToPhysicalCluster(entryNumber), data, numBytes);
+        data += bytesPerSector;
+        numBytes -= bytesPerSector;
+      }
+    }
+    else
+    {
+      printf("Freeing sector %u\n", entryNumber);
+      setFatEntry(entryNumber, 0x000);
+    }
+    
+    if (sectorIndex == numNeededSectors - 1)
+    {
+      // Mark the end of the chain of FAT entries.
+      setFatEntry(entryNumber, 0xFFF);
+    }
+    
+    if (entryType == FAT_ENTRY_TYPE_NEXT_SECTOR)
+    {
+      // Reuse this and the next FAT entry.
+      entryNumber = entryValue;
+    }
+    else if (sectorIndex < numNeededSectors - 1)
+    {
+      // Allocate a new FAT entry.
+      findUnusedFatEntry(&temp);
+      setFatEntry(entryNumber, temp);
+      entryNumber = temp;
+    }
+  }
+  
+  getFatEntry(flc, &entryValue, &entryType);
+  printf("[ %u", flc);
+  while (entryType != FAT_ENTRY_TYPE_LAST_SECTOR)
+  {
+    printf(" -> %u", entryValue);
+    getFatEntry(entryValue, &entryValue, &entryType);
+  }
+  printf(" ]\n");
+  
+  return 0;
 }
 
 /******************************************************************************
@@ -564,6 +693,74 @@ int freeFileContents(unsigned short flc)
   // TODO: Implement this for the 'rm' and 'rmdir' commands.
 }
 
+
+//-----------------------------------------------------------------------------
+// FAT Table Interface
+//-----------------------------------------------------------------------------
+
+/******************************************************************************
+ * getFatEntry
+ *****************************************************************************/
+void getFatEntry(unsigned int entryNumber, unsigned int* entryValue,
+                int* entryType)
+{
+  *entryValue = get_fat_entry(entryNumber, fatFileSystem.fatTable);
+  
+  if (*entryValue == 0x00)
+    *entryType = FAT_ENTRY_TYPE_UNUSED;
+  else if (*entryValue >= 0xFF0 && *entryValue <= 0xFF6)
+    *entryType = FAT_ENTRY_TYPE_RESERVED;
+  else if (*entryValue == 0xFF7)
+    *entryType = FAT_ENTRY_TYPE_BAD;
+  else if (*entryValue >= 0xFF8 && *entryValue <= 0xFFF)
+    *entryType = FAT_ENTRY_TYPE_LAST_SECTOR;
+  else  
+    *entryType = FAT_ENTRY_TYPE_NEXT_SECTOR;
+}
+
+/******************************************************************************
+ * setFatEntry
+ *****************************************************************************/
+void setFatEntry(unsigned int entryNumber, unsigned int entryValue)
+{
+  set_fat_entry(entryNumber, entryValue, fatFileSystem.fatTable);
+}
+
+/******************************************************************************
+ * findUnusedFatEntry
+ *****************************************************************************/
+int findUnusedFatEntry(unsigned int* entryNumber)
+{
+  unsigned int tempEntryNumber;
+  unsigned int entryValue;
+  unsigned int entryType;
+  
+  unsigned int totalEntries = fatFileSystem.bootSector.totalSectorCount -
+                              fatFileSystem.sectorOffsets.dataRegion + 2;
+  
+  for (tempEntryNumber = 0; tempEntryNumber < totalEntries; tempEntryNumber++)
+  {
+    getFatEntry(tempEntryNumber, &entryValue, &entryType);
+    if (entryType == FAT_ENTRY_TYPE_UNUSED)
+    {
+      *entryNumber = tempEntryNumber;
+      return 0;
+    }
+  }
+  
+  return -1;
+}
+
+/******************************************************************************
+ * logicalToPhysicalCluster
+ *****************************************************************************/
+unsigned int logicalToPhysicalCluster(unsigned int logicalCluster)
+{
+  if (logicalCluster == 0)
+    return fatFileSystem.sectorOffsets.rootDirectory;
+  else
+    return fatFileSystem.sectorOffsets.dataRegion + logicalCluster - 2;
+}
 
 //-----------------------------------------------------------------------------
 // Internal Functions
@@ -626,6 +823,25 @@ static unsigned char* readFatTable(int fatIndex)
   }
 
   return buffer;
+}
+
+/******************************************************************************
+ * writeFatTable
+ *****************************************************************************/
+static void writeFatTable(int fatIndex, unsigned char* fatTable)
+{
+  unsigned int i;
+  
+  // Calculate the table's sector number.
+  unsigned int sector = fatFileSystem.sectorOffsets.fatTables +
+                        (fatIndex * fatFileSystem.bootSector.sectorsPerFAT);
+  
+  // Write each sector of the table to disk.
+  for (i = 0; i < fatFileSystem.bootSector.sectorsPerFAT; i++)
+  {
+    write_sector(sector + i, fatTable, fatFileSystem.bootSector.bytesPerSector);
+    fatTable += fatFileSystem.bootSector.bytesPerSector;
+  }
 }
 
 /******************************************************************************
