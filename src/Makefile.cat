@@ -1,0 +1,10 @@
+
+# Name of the program executable.
+NAME=cat
+
+# List of files to compile and link for this program.
+FILES=cat.o fat.o fatSupport.o
+
+# This file must be included at the end.
+include ../Makefile.targets
+
