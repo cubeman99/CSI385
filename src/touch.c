@@ -38,26 +38,14 @@ int main(int argc, char* argv[])
 
 int touchCommand(char* pathName)
 {
-  char* directoryName = pathName;
-  
-  // Load the current working directory.  
-  FilePath filePath;
-  getWorkingDirectory(&filePath);
-  
-  // Make sure the file doesn't already exist.
-  // TODO Supress this output.
-  if (changeFilePath(&filePath, pathName, PATH_TYPE_ANY) == 0)
-  {
-    printf("Error: cannot create directory '%s': File exists\n", pathName);
-    return -1;
-  }
+  char* fileName;
   
   // Separate the file name from the path name.
   char* finalSlash = strrchr(pathName, '/');
   if (finalSlash != NULL)
   {
-    directoryName = (char*) malloc(strlen(finalSlash + 1) + 1);
-    strcpy(directoryName, finalSlash + 1);
+    fileName = (char*) malloc(strlen(finalSlash + 1) + 1);
+    strcpy(fileName, finalSlash + 1);
     
     if (finalSlash == pathName)
       finalSlash[1] = '\0';
@@ -66,15 +54,19 @@ int touchCommand(char* pathName)
   }
   else
   {
-    directoryName = (char*) malloc(strlen(pathName) + 1);
-    strcpy(directoryName, pathName);
+    fileName = (char*) malloc(strlen(pathName) + 1);
+    strcpy(fileName, pathName);
     pathName[0] = '\0';
   }
   
-  // Locate the file path.
+  // Load the current working directory.  
+  FilePath filePath;
+  getWorkingDirectory(&filePath);
+  
+  // Locate the fileparent directory.
   if (changeFilePath(&filePath, pathName, PATH_TYPE_DIRECTORY) != 0)
   {
-    free(directoryName);
+    free(fileName);
     return -1;
   }
     
@@ -83,13 +75,21 @@ int touchCommand(char* pathName)
     .firstLogicalCluster;
   DirectoryEntry* parentDir = openDirectory(flcOfParentDir); 
   
+  // Check if the file-to-create already exists.
+  if (findEntryByName(parentDir, fileName) >= 0)
+  {
+    printf("Error: cannot create file '%s': File exists\n", fileName);
+    free(fileName);
+    return -1;
+  }
+  
   // Create an entry in the parent directory for the new file.
   int newEntryIndex;
-  int rc = createNewEntry(flcOfParentDir, &parentDir, directoryName,
+  int rc = createNewEntry(flcOfParentDir, &parentDir, fileName,
                           &newEntryIndex);
   if (rc != 0)
   {
-    free(directoryName);
+    free(fileName);
     return rc;
   }
 
@@ -101,7 +101,8 @@ int touchCommand(char* pathName)
   saveDirectory(flcOfParentDir, parentDir);
   closeDirectory(parentDir);
   
-  free(directoryName);
+  free(fileName);
+  return 0;
 }
 
 

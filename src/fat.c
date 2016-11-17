@@ -1,7 +1,7 @@
 /*****************************************************************************
  * Author: David Jordan & Joey Gallahan
  * 
- * Description: TODO
+ * Description: Definitions for the FAT file system utility functions.
  *
  * Certification of Authenticity:
  * I certify that this assignment is entirely my own work.
@@ -346,7 +346,18 @@ void closeDirectory(DirectoryEntry* directory)
  *****************************************************************************/
 int saveDirectory(unsigned short flc, DirectoryEntry* directory)
 {
-  unsigned short numSectors = getFatEntryChainLength(flc);
+  unsigned short numSectors;
+  
+  if (flc == 0)
+  {
+    numSectors = fatFileSystem.sectorOffsets.dataRegion - 
+                 fatFileSystem.sectorOffsets.rootDirectory;
+  }
+  else
+  {
+    numSectors = getFatEntryChainLength(flc);
+  }
+  
   unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
   
   writeFileContents(flc, (unsigned char*) directory, numBytes);
@@ -502,6 +513,14 @@ int createNewEntry(unsigned short flc, DirectoryEntry** directory,
   // Increase the size of the directory if it is full.
   if (index == maxNumEntries)
   {
+    // Can't increase the size of the root directory.
+    if (flc == 0)
+    {
+      printf("Error: root directory is full\n");
+      return -1;
+    }
+    
+    // Reallocate memory for the directory's contents.
     numSectorsForDir++;
     *directory = (DirectoryEntry*) realloc(*directory, numSectorsForDir * bytesPerSector);
     int rc = writeFileContents(flc, (unsigned char*) *directory,
@@ -509,14 +528,11 @@ int createNewEntry(unsigned short flc, DirectoryEntry** directory,
     if (rc != 0)
       return rc;
     
-    // TODO: remove this debug print.
-    printf("Increased directory size to %u\n", numSectorsForDir);
-    
     entry = (*directory) + index;
     (entry + 1)->name[0] = DIR_ENTRY_END_OF_ENTRIES;
   }
   
-  // Initialize the entry's information.
+  // Initialize the new entry's information.
   setEntryName(entry, name);
   entry->attributes = 0;
   entry->fileSize = 0;
@@ -630,21 +646,43 @@ int readFileContents(unsigned short flc, unsigned char** data,
   unsigned short sectorIndex;
   unsigned char* sectorData;
   
-  // Count the number of sectors used by the given FLC.
-  numSectors = getFatEntryChainLength(flc);
-  
-  *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
-  *data = (unsigned char*) malloc(*numBytes);
-  
-  // Read the data from each sector.
-  entryValue = flc;
-  sectorData = *data;
-    
-  for (sectorIndex = 0; sectorIndex < numSectors; sectorIndex++)
+  if (flc == 0)
   {
-    read_sector(logicalToPhysicalCluster(entryValue), sectorData);
-    getFatEntry(entryValue, &entryValue, &entryType);
-    sectorData += fatFileSystem.bootSector.bytesPerSector;
+    // Count the number of sectors used by the root directory.
+    numSectors = fatFileSystem.sectorOffsets.dataRegion - 
+                 fatFileSystem.sectorOffsets.rootDirectory;
+    
+    *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+    *data = (unsigned char*) malloc(*numBytes);
+    
+    // Read the data from each sector.
+    sectorData = *data;
+    
+    for (sectorIndex = 0; sectorIndex < numSectors; sectorIndex++)
+    {
+      read_sector(fatFileSystem.sectorOffsets.rootDirectory + sectorIndex,
+                  sectorData);
+      sectorData += fatFileSystem.bootSector.bytesPerSector;
+    }
+  }
+  else
+  {
+    // Count the number of sectors used by the given FLC.
+    numSectors = getFatEntryChainLength(flc);
+    
+    *numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+    *data = (unsigned char*) malloc(*numBytes);
+    
+    // Read the data from each sector.
+    entryValue = flc;
+    sectorData = *data;
+      
+    for (sectorIndex = 0; sectorIndex < numSectors; sectorIndex++)
+    {
+      read_sector(logicalToPhysicalCluster(entryValue), sectorData);
+      getFatEntry(entryValue, &entryValue, &entryType);
+      sectorData += fatFileSystem.bootSector.bytesPerSector;
+    }
   }
 
   return 0;
@@ -671,70 +709,95 @@ int writeFileContents(unsigned short flc, unsigned char* data,
   if (numNeededSectors == 0)
     numNeededSectors = 1;
   
-  // Count the current number of sectors used by the existing FLC.
-  numUsedSectors = getFatEntryChainLength(flc);
-
-  // Check if there isn't enough available sectors for to write all the data.
-  if (numNeededSectors > numUsedSectors)
+  if (flc == 0)
   {
-    unsigned short totalSectors;
-    unsigned short numUsedBlocks;
+    // Calculate the number of sectors for the root directory.
+    numUsedSectors = fatFileSystem.sectorOffsets.dataRegion - 
+                     fatFileSystem.sectorOffsets.rootDirectory;
     
-    getNumberOfUsedBlocks(&numUsedBlocks, &totalSectors);
-    
-    unsigned short numAvailableSectors = totalSectors - numUsedBlocks + 
-                                         numUsedSectors;
-    
-    if (numAvailableSectors < numNeededSectors)
+    // Check if we're asking to write too many sectors.
+    if (numNeededSectors > numUsedSectors)
     {
-      printf("Error: not enough available blocks to write %u bytes\n", numBytes);
+      printf("Error: not enough space in the root directory.");
       return -1;
     }
-  }
-  
-  entryNumber = flc;
-  unsigned short maxNeededUsedSectors = numNeededSectors;
-  if (numUsedSectors > numNeededSectors)
-    maxNeededUsedSectors = numUsedSectors; 
     
-  // Write the data to the needed sectors, and free any uneeded 
-  // but previously-used sectors.
-  for (sectorIndex = 0; sectorIndex < maxNeededUsedSectors; sectorIndex++)
-  {
-    getFatEntry(entryNumber, &entryValue, &entryType);
-    
-    // Write the data into this sector.
-    if (sectorIndex < numNeededSectors)
+    // Write the data to the sectors of the root directory.
+    for (sectorIndex = 0; sectorIndex < numNeededSectors; sectorIndex++)
     {
-      if (numBytes > 0)
+      write_sector(fatFileSystem.sectorOffsets.rootDirectory + sectorIndex,
+                   data, numBytes);
+      data += bytesPerSector;
+      numBytes -= bytesPerSector;
+    }
+  }
+  else
+  {
+    // Count the current number of sectors used by the existing FLC.
+    numUsedSectors = getFatEntryChainLength(flc);
+
+    // Check if there isn't enough available sectors for to write all the data.
+    if (numNeededSectors > numUsedSectors)
+    {
+      unsigned short totalSectors;
+      unsigned short numUsedBlocks;
+      
+      getNumberOfUsedBlocks(&numUsedBlocks, &totalSectors);
+      
+      unsigned short numAvailableSectors = totalSectors - numUsedBlocks + 
+                                           numUsedSectors;
+      
+      if (numAvailableSectors < numNeededSectors)
       {
-        write_sector(logicalToPhysicalCluster(entryNumber), data, numBytes);
-        data += bytesPerSector;
-        numBytes -= bytesPerSector;
+        printf("Error: not enough available blocks to write %u bytes\n", numBytes);
+        return -1;
       }
     }
-    else
-    {
-      setFatEntry(entryNumber, 0x000);
-    }
     
-    if (sectorIndex == numNeededSectors - 1)
+    entryNumber = flc;
+    unsigned short maxNeededUsedSectors = numNeededSectors;
+    if (numUsedSectors > numNeededSectors)
+      maxNeededUsedSectors = numUsedSectors; 
+      
+    // Write the data to the needed sectors, and free any uneeded 
+    // but previously-used sectors.
+    for (sectorIndex = 0; sectorIndex < maxNeededUsedSectors; sectorIndex++)
     {
-      // Mark the end of the chain of FAT entries.
-      setFatEntry(entryNumber, 0xFFF);
-    }
-    
-    if (entryType == FAT_ENTRY_TYPE_NEXT_SECTOR)
-    {
-      // Reuse this and the next FAT entry.
-      entryNumber = entryValue;
-    }
-    else if (sectorIndex < numNeededSectors - 1)
-    {
-      // Allocate a new FAT entry.
-      findUnusedFatEntry(&temp);
-      setFatEntry(entryNumber, temp);
-      entryNumber = temp;
+      getFatEntry(entryNumber, &entryValue, &entryType);
+      
+      // Write the data into this sector.
+      if (sectorIndex < numNeededSectors)
+      {
+        if (numBytes > 0)
+        {
+          write_sector(logicalToPhysicalCluster(entryNumber), data, numBytes);
+          data += bytesPerSector;
+          numBytes -= bytesPerSector;
+        }
+      }
+      else
+      {
+        setFatEntry(entryNumber, 0x000);
+      }
+      
+      if (sectorIndex == numNeededSectors - 1)
+      {
+        // Mark the end of the chain of FAT entries.
+        setFatEntry(entryNumber, 0xFFF);
+      }
+      
+      if (entryType == FAT_ENTRY_TYPE_NEXT_SECTOR)
+      {
+        // Reuse this and the next FAT entry.
+        entryNumber = entryValue;
+      }
+      else if (sectorIndex < numNeededSectors - 1)
+      {
+        // Allocate a new FAT entry.
+        findUnusedFatEntry(&temp);
+        setFatEntry(entryNumber, temp);
+        entryNumber = temp;
+      }
     }
   }
   
