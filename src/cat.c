@@ -38,19 +38,22 @@ int main(int argc, char* argv[])
   else if (argc == 2)
   {  
   	// Load the working directory.
-		FilePath filePath;
-		getWorkingDirectory(&filePath);	
+		FilePath dirPath;
+		getWorkingDirectory(&dirPath);	
+		
+		//Make a new path to the requested file
+  	FilePath newPath;
+  	char* test = (char*) malloc(sizeof(dirPath.pathName) + sizeof(argv[1]));
+  	strcpy(test, dirPath.pathName);
+  	strcat(test, argv[1]);
   		
-  	// Change to the given file path.
-  	if (changeFilePath(&filePath, argv[1], PATH_TYPE_FILE) != 0)
-  	{
-  	  return -1; // File not found.
-	  }
+  	//Change to the new path
+  	changeFilePath(&newPath, test, PATH_TYPE_FILE);
   		
-  	// Get the first logical cluster of this file.
-  	unsigned short flc = filePath.dirLevels[filePath.depthLevel - 1].firstLogicalCluster;  
+  	//Get the first logical cluster of this file
+  	unsigned short flc = newPath.dirLevels[newPath.depthLevel - 1].firstLogicalCluster;  
   		
-  	// Print out the file contents.
+  	//Print out the file contents if there are any
 		unsigned char* output;
 		unsigned int numBytes;
 		if (readFileContents(flc, &output, &numBytes) == 0)
@@ -58,9 +61,7 @@ int main(int argc, char* argv[])
 			printf("%s\n", output);
 			return 0;
 		}
-		
-  	return -1; // Error reading file data.
+  	printf("Error: File not found.\n");
+  	return -1;
 	}
-	
-	terminateFatFileSystem();
 }
