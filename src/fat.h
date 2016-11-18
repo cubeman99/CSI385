@@ -486,11 +486,16 @@ int freeFileContents(unsigned short flc);
 //-----------------------------------------------------------------------------
 
 /******************************************************************************
- * getFatEntry - TODO
+ * getFatEntry - Get the value and type of a FAT entry.
  *
- * entryNumber - TODO
- * entryValue - TODO
- * entryType - TODO
+ * entryNumber - the number of the FAT entry (equal to a logical sector number)
+ * entryValue - the resulting value of the FAT entry
+ * entryType - the resulting type of the FAT entry. Possible types:
+ *                - FAT_ENTRY_TYPE_UNUSED
+ *                - FAT_ENTRY_TYPE_RESERVED
+ *                - FAT_ENTRY_TYPE_BAD
+ *                - FAT_ENTRY_TYPE_LAST_SECTOR
+ *                - FAT_ENTRY_TYPE_NEXT_SECTOR
  * 
  * Return - none
  *****************************************************************************/
@@ -498,10 +503,10 @@ void getFatEntry(unsigned short entryNumber, unsigned short* entryValue,
                 int* entryType);
 
 /******************************************************************************
- * setFatEntry - TODO
+ * setFatEntry - Set the value of a FAT entry.
  *
- * entryNumber - TODO
- * entryValue - TODO
+ * entryNumber - the number of the FAT entry (equal to a logical sector number)
+ * entryValue - the value to set for the FAT entry
  * 
  * Return - none
  *****************************************************************************/
@@ -510,18 +515,19 @@ void setFatEntry(unsigned short entryNumber, unsigned short entryValue);
 /******************************************************************************
  * findUnusedFatEntry - Find an unused FAT entry, getting its entry number.
  *
- * entryNumber - TODO
+ * entryNumber - the resulting number of an unused FAT entry (if one was found)
  * 
- * Return - 0 on success, -1 on failure
+ * Return - 0 if an unused entry was found, -1 if not.
  *****************************************************************************/
 int findUnusedFatEntry(unsigned short* entryNumber);
 
 /******************************************************************************
- * getFatEntryChainLength - TODO
+ * getFatEntryChainLength - Count the number of sectors in a chain of FAT
+ *                          entries, starting at the given FLC.
  *
- * firstEntryNumber - TODO
+ * firstEntryNumber - The FAT entry number to start at
  * 
- * Return - TODO
+ * Return - the length of the entry chain starting at firstEntryNumber
  *****************************************************************************/
 unsigned short getFatEntryChainLength(unsigned short firstEntryNumber);
 

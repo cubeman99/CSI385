@@ -38,21 +38,9 @@ int main(int argc, char* argv[])
 
 int mkdirCommand(char* pathName)
 {
-  char* directoryName = pathName;
+  char* directoryName;
   
-  // Load the current working directory.  
-  FilePath filePath;
-  getWorkingDirectory(&filePath);
-  
-  // Make sure the file doesn't already exist.
-  // TODO Supress this output.
-  if (changeFilePath(&filePath, pathName, PATH_TYPE_ANY) == 0)
-  {
-    printf("Error: cannot create directory '%s': File exists\n", pathName);
-    return -1;
-  }
-  
-  // Separate the directory name from the path name.
+  // Separate the directory name from the parent directory path name.
   char* finalSlash = strrchr(pathName, '/');
   if (finalSlash != NULL)
   {
@@ -71,7 +59,11 @@ int mkdirCommand(char* pathName)
     pathName[0] = '\0';
   }
   
-  // Locate the file path.
+  // Load the current working directory.  
+  FilePath filePath;
+  getWorkingDirectory(&filePath);
+  
+  // Locate the parent directory.
   if (changeFilePath(&filePath, pathName, PATH_TYPE_DIRECTORY) != 0)
   {
     free(directoryName);
@@ -82,6 +74,14 @@ int mkdirCommand(char* pathName)
   unsigned short flcOfParentDir = filePath.dirLevels[filePath.depthLevel - 1]
     .firstLogicalCluster;
   DirectoryEntry* parentDir = openDirectory(flcOfParentDir); 
+  
+  // Check if the directory-to-create already exists.
+  if (findEntryByName(parentDir, directoryName) >= 0)
+  {
+    printf("Error: cannot create directory '%s': File exists\n", directoryName);
+    free(directoryName);
+    return -1;
+  }
   
   // Create an entry in the parent directory for the new subdirectory.
   int newEntryIndex;
@@ -129,6 +129,7 @@ int mkdirCommand(char* pathName)
   closeDirectory(parentDir);
   
   free(directoryName);
+  return 0;
 }
 
 
