@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #include "fat.h"
 
@@ -42,8 +44,15 @@ static void freeFatTable(unsigned char* fatTable);
  *****************************************************************************/
 int initializeFatFileSystem()
 {
+  // Setup the shared memory.
+  key_t key = FAT12_SHARED_MEMORY_KEY;
+  fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644 | IPC_CREAT);
+  fatFileSystem.sharedMemoryPtr = shmat(fatFileSystem.sharedMemoryId, (void *) 0, 0);
+  fatFileSystem.diskImageFileName = fatFileSystem.sharedMemoryPtr;
+  fatFileSystem.workingDirectoryPathName = fatFileSystem.sharedMemoryPtr + 512;
+
   // Open the disk image file.
-  fatFileSystem.fileSystemId = fopen(FAT12_DISK_IMAGE_FILE_NAME, "r+");
+  fatFileSystem.fileSystemId = fopen(fatFileSystem.diskImageFileName, "r+");
   if (fatFileSystem.fileSystemId == NULL)
   {
     printf("Could not open the floppy drive or image.\n");
@@ -64,7 +73,7 @@ int initializeFatFileSystem()
     printf("Something has gone wrong -- could not read the FAT table\n");
     return -1;
   }
-
+  
   return 0;
 }
 
@@ -76,6 +85,7 @@ void terminateFatFileSystem()
   writeFatTable(0, fatFileSystem.fatTable);
   freeFatTable(fatFileSystem.fatTable);
   fclose(fatFileSystem.fileSystemId);
+  shmdt(fatFileSystem.sharedMemoryPtr);
 }
 
 /******************************************************************************
@@ -135,36 +145,12 @@ void initFilePath(FilePath* filePath)
  *****************************************************************************/
 void getWorkingDirectory(FilePath* filePath)
 {
-  // TODO: Use some sort of shared memory to save this stuff.
-
   // Always start at the root directory.
   initFilePath(filePath);
 
-  // Load the current working directory from file.
-  if (access(WORKING_DIRECTORY_FILE_NAME, F_OK) != -1)
-  {
-    // The file exists, open it.
-    FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "r");
-    if (cwdFile == NULL)
-    {
-      printf("Failure to get current working directory.\n");
-      return;
-    }
-
-    // Read the path name from the file.
-    char pathName[FAT12_MAX_PATH_NAME_LENGTH];
-    fgets(pathName, sizeof(pathName), cwdFile);
- 
-    // Remove the newline character from the end of the path name.
-    char *pos = strchr(pathName, '\n');
-    if (pos != NULL)
-      *pos = '\0';
-
-    // Change the file path using the read path name.
-    changeFilePath(filePath, pathName, PATH_TYPE_DIRECTORY);
-
-    fclose(cwdFile);
-  }
+  // Change the file path using the current working directory's path name.
+  changeFilePath(filePath, fatFileSystem.workingDirectoryPathName,
+                 PATH_TYPE_DIRECTORY);
 }
 
 /******************************************************************************
@@ -172,18 +158,7 @@ void getWorkingDirectory(FilePath* filePath)
  *****************************************************************************/
 void setWorkingDirectory(FilePath* filePath)
 {
-  FILE* cwdFile = fopen(WORKING_DIRECTORY_FILE_NAME, "w");
-
-  if (cwdFile == NULL)
-  {
-    printf("Failure to set current working directory.\n");
-    return;
-  }
-
-  fprintf(cwdFile, "%s\n", filePath->pathName);
-
-  fclose(cwdFile);
-  return;
+  strcpy(fatFileSystem.workingDirectoryPathName, filePath->pathName);
 }
 
 /******************************************************************************
