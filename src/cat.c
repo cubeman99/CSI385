@@ -43,12 +43,23 @@ int main(int argc, char* argv[])
 		
 		//Make a new path to the requested file
   	FilePath newPath;
-  	char* test = (char*) malloc(sizeof(dirPath.pathName) + sizeof(argv[1]));
-  	strcpy(test, dirPath.pathName);
-  	strcat(test, argv[1]);
-  		
+  	char* path = argv[1];
+  	
+  	//If it's a relative path, add the user's input to the current path
+  	if (argv[1][0] != '/')
+  	{
+			path = (char*) malloc(sizeof(dirPath.pathName) + sizeof(argv[1]));
+			strcpy(path, dirPath.pathName);
+			if(dirPath.depthLevel != 1)
+			{				
+			  strcat(path, "/");
+			  
+			}
+			strcat(path, argv[1]);		
+		}
+		
   	//Change to the new path
-  	changeFilePath(&newPath, test, PATH_TYPE_FILE);
+  	changeFilePath(&newPath, path, PATH_TYPE_FILE);
   		
   	//Get the first logical cluster of this file
   	unsigned short flc = newPath.dirLevels[newPath.depthLevel - 1].firstLogicalCluster;  
@@ -61,6 +72,7 @@ int main(int argc, char* argv[])
 			printf("%s\n", output);
 			return 0;
 		}
+		
   	printf("Error: File not found.\n");
   	return -1;
 	}

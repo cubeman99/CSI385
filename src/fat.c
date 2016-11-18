@@ -357,7 +357,40 @@ int saveDirectory(unsigned short flc, DirectoryEntry* directory)
  *****************************************************************************/
 void organizeDirectory(DirectoryEntry* directory)
 {
-  // TODO: Implement for the 'rm' and 'rmdir' commands.
+  DirectoryEntry* entry = directory;
+  unsigned short bytesPerSector = fatFileSystem.bootSector.bytesPerSector;
+  unsigned short numSectorsForDir = getFatEntryChainLength(directory->firstLogicalCluster);
+  
+  int maxNumEntries = ((numSectorsForDir * bytesPerSector) / sizeof(DirectoryEntry)) - 1;
+                 
+  int index = 0;
+  // Find an unused entry in the given directory.
+  while (index < maxNumEntries)
+  {
+    if ((unsigned char) entry->name[0] == DIR_ENTRY_FREE)
+    {
+      // The directory entry is free (i.e., currently unused).
+      break;
+    }
+    else if ((unsigned char) entry->name[0] == DIR_ENTRY_END_OF_ENTRIES)
+    {      
+      // This directory entry is free and all the remaining directory
+      // entries in this directory are also free.
+      (entry + 1)->name[0] = DIR_ENTRY_END_OF_ENTRIES;
+      break;
+    }
+    
+    entry++;
+    index++;
+  }
+  directory = (DirectoryEntry*) realloc(directory, numSectorsForDir * bytesPerSector);
+  int rc = writeFileContents(directory->firstLogicalCluster, (unsigned char*) directory,
+                             numSectorsForDir * bytesPerSector);
+  
+  saveDirectory(directory->firstLogicalCluster, directory);
+  if (rc != 0)
+    printf("%d\n", rc);  
+   
 }
 
 /******************************************************************************
@@ -365,7 +398,29 @@ void organizeDirectory(DirectoryEntry* directory)
  *****************************************************************************/
 void removeEntry(DirectoryEntry* directory, int index)
 {
-  // TODO: Implement for the 'rm' and 'rmdir' commands.
+  if (isEntryADirectory(directory) || directory->name[0] == 65)
+  {
+    if (index >= 0)
+    { 
+      //Get the entry from the parent directory to remove                            
+      DirectoryEntry* entryToRemove = directory + index;
+      
+      unsigned int flc = entryToRemove->firstLogicalCluster;
+      unsigned short numSectors = getFatEntryChainLength(flc);
+      unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+           
+      entryToRemove->attributes = 0;
+      entryToRemove->fileSize = 0;
+      entryToRemove->name[0] = DIR_ENTRY_FREE;
+      saveDirectory(directory->firstLogicalCluster, directory);
+      organizeDirectory(directory);
+      freeFileContents(flc);
+    }
+  }
+  else
+  {
+    printf("Error: Something went wrong. The parent is a file.\n");
+  }
 }
 
 /******************************************************************************
@@ -747,6 +802,9 @@ int writeFileContents(unsigned short flc, unsigned char* data,
 int freeFileContents(unsigned short flc)
 {
   // TODO: Implement this for the 'rm' and 'rmdir' commands.
+  unsigned int numSectors = getFatEntryChainLength(flc);
+  unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector; 
+  setFatEntry(flc, FAT_ENTRY_TYPE_UNUSED);
 }
 
 
