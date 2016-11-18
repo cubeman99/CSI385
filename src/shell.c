@@ -24,7 +24,7 @@
 #define TRUE 1
 
 void displayPrompt();
-void readCommand(char* command, char** params);
+int readCommand(char* command, char** params);
 
 
 int main(int argc, char** argv)
@@ -81,8 +81,9 @@ int main(int argc, char** argv)
    while (exitShell != TRUE)
    {
       displayPrompt();
-      readCommand(commandName, params);
-      
+      if (readCommand(commandName, params) != 0)
+         continue;
+            
       // Create a path to the command.
       strcpy(pathToSpecificCommand, pathToCommands);
       strcat(pathToSpecificCommand, commandName);
@@ -128,7 +129,7 @@ void displayPrompt()
 }
 
 
-void readCommand(char* command, char** params)
+int readCommand(char* command, char** params)
 {
    char* lineOfInput = NULL; // getline() will allocate this string.
    size_t numBytes = 0;
@@ -137,6 +138,12 @@ void readCommand(char* command, char** params)
    // Get the user's line of input, then tokenize it, delimited by spaces.
    getline(&lineOfInput, &numBytes, stdin);
    char* token = strtok(lineOfInput, " \n");
+   
+   if (token == NULL)
+   {
+     // The user entered nothing at all!
+     return 1;
+   }
    
    // The first token is always the command name.
    strcpy(command, token);
@@ -152,6 +159,7 @@ void readCommand(char* command, char** params)
    params[counter] = NULL; // Null terminate the parameter list.
    
    free(lineOfInput);
+   return 0;
 }
 
 
