@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -25,27 +27,74 @@ void displayPrompt();
 void readCommand(char* command, char** params);
 
 
-int main()
+int main(int argc, char** argv)
 {
-   char command[32];
+   char pathToCommands[512];
+   char pathToSpecificCommand[512];
+   char commandName[32];
    char* params[32];
+   
    int status;
    int i;
    int exitShell = FALSE;
-
+   
+   // Validate the number of arguments.
+   if (argc > 2)
+   {
+      printf("Error: Too many arguments!\n");
+      printf("Usage: shell [DISK_IMAGE_FILE_PATH]\n");
+      return -1;
+   }
+   
+   // Get the file name for the disk image, and make sure it exists.
+   const char* diskImageFileName = "../disks/floppy2"; // default file name.
+   if (argc == 2)
+     diskImageFileName = argv[1];
+     
+   if (access(diskImageFileName, F_OK) == -1)
+   {
+      printf("Error: %s: unable to open disk image file\n", diskImageFileName);
+      printf("Please provide a path to a disk image file as an argument\n");
+      printf("Usage: shell [DISK_IMAGE_FILE_PATH]\n");
+      return -1;
+   }
+   
+   // Get the path to the directory where this shell executable is located.
+   // This is also where the command executables are located.
+   readlink("/proc/self/exe", pathToCommands, sizeof(pathToCommands));
+   char* finalSlash = strrchr(pathToCommands, '/');
+   if (finalSlash != NULL)
+      finalSlash[1] = '\0';
+      
+   // Create the shared memory.
+   key_t key = FAT12_SHARED_MEMORY_KEY;
+   fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644 | IPC_CREAT);
+   fatFileSystem.sharedMemoryPtr = shmat(fatFileSystem.sharedMemoryId, (void *) 0, 0);
+   fatFileSystem.diskImageFileName = fatFileSystem.sharedMemoryPtr;
+   fatFileSystem.workingDirectoryPathName = fatFileSystem.sharedMemoryPtr + 512;
+   
+   // Initialize the disk image path and current working directory.
+   strcpy(fatFileSystem.workingDirectoryPathName, "/");
+   strcpy(fatFileSystem.diskImageFileName, diskImageFileName);
+   
+   // Run the shell's main loop.
    while (exitShell != TRUE)
    {
       displayPrompt();
-      readCommand(command, params);
+      readCommand(commandName, params);
+      
+      // Create a path to the command.
+      strcpy(pathToSpecificCommand, pathToCommands);
+      strcat(pathToSpecificCommand, commandName);
       
       // A hard-coded exit command will quit the shell.
-      if (strcmp(command, "exit") == 0)
+      if (strcmp(commandName, "exit") == 0)
       { 
          exitShell = TRUE;
       }
-      else if (access(command, F_OK) == -1)
+      else if (access(pathToSpecificCommand, F_OK) == -1)
       {
-         printf("Error: Unknown command '%s'\n", command);
+         printf("Error: Unknown command '%s'\n", commandName);
       }
       else
       {
@@ -56,7 +105,7 @@ int main()
          }
          else
          {
-            execve(command, params, 0);
+            execve(pathToSpecificCommand, params, 0);
       	 }
       }
       
@@ -65,8 +114,10 @@ int main()
       {
          free(params[i]);
       }
-   }   
-
+   }
+   
+   // Destroy the shared memory.
+   shmctl(fatFileSystem.sharedMemoryId, IPC_RMID, NULL);
    return 0;
 }
 

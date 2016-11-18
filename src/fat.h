@@ -5,22 +5,12 @@
 #include <stdio.h>
 
 
-// NEW Changes:
-//  * struct WorkingDirectory --> struct FilePath
-//  * changeWorkingDirectory --> changeFilePath
-//  * Directory functions now take a DirectoryEntry pointer (list of entries)
-//    - Use getFirstValidEntry() and getNextValidEntry() to iterate directories
-//  * findDirectoryEntryByName --> findEntryByName
-//  * entryToString --> getEntryName
-//  * readLogicalClusterChain --> readFileContents
-//  * Removed workingDirectory variable from FatFileSystem, use
-//      getWorkingDirectory() along with a FilePath instead.
-//  * Removed getWorkingDirectoryPathName
-
-
 //-----------------------------------------------------------------------------
 // Constants
 //-----------------------------------------------------------------------------
+
+// A key to share memory between command processes.
+#define FAT12_SHARED_MEMORY_KEY 888888
 
 // The file name of the disk image file to open.
 #define FAT12_DISK_IMAGE_FILE_NAME "../disks/floppy2"
@@ -177,6 +167,10 @@ typedef struct
   FILE*            fileSystemId;
   FatBootSector    bootSector;
   FatTable         fatTable;
+  char*            diskImageFileName;  
+  char*            workingDirectoryPathName;
+  char*            sharedMemoryPtr;
+  int              sharedMemoryId;
   
   struct
   {
