@@ -1,3 +1,13 @@
+/*****************************************************************************
+ * Author: David Jordan & Joey Gallahan
+ * 
+ * Description: Function headers and struct/enum definitions for the FAT file
+ *              system utility functions.
+ *
+ * Certification of Authenticity:
+ * I certify that this assignment is entirely my own work.
+ ****************************************************************************/
+ 
 #ifndef _FAT_H_
 #define _FAT_H_
 
@@ -9,12 +19,6 @@
 // Constants
 //-----------------------------------------------------------------------------
 
-// A key to share memory between command processes.
-#define FAT12_SHARED_MEMORY_KEY 888888
-
-// The file name of the disk image file to open.
-#define FAT12_DISK_IMAGE_FILE_NAME "../disks/floppy2"
-
 // The maximum number of characters needed to contain a file name.
 #define FAT12_MAX_FILE_NAME_LENGTH 13
 
@@ -23,9 +27,6 @@
 
 // The maximum number of allowed characters for an absolute file path.
 #define FAT12_MAX_PATH_NAME_LENGTH (13 * 32)
-
-// The name of the file in which the working directory's path name is stored.
-#define WORKING_DIRECTORY_FILE_NAME "./cwd.txt"
 
 // If the first byte of the Filename field is 0xE5, then the directory entry is
 // free (i.e., currently unused), and hence there is no file or subdirectory
@@ -41,12 +42,13 @@
 // file name and can be ignored for purposes of this assignment. 
 #define DIR_ENTRY_ATTRIB_LONG_FILE_NAME  0x0F
 
+// A key to share memory between command processes.
+#define FAT12_SHARED_MEMORY_KEY 888888
+
 
 //-----------------------------------------------------------------------------
 // Type Defines
 //-----------------------------------------------------------------------------
-
-typedef unsigned char* FatTable;
 
 /******************************************************************************
  * PathType - Possible file types that a path can point to (used for the
@@ -166,7 +168,7 @@ typedef struct
 {
   FILE*            fileSystemId;
   FatBootSector    bootSector;
-  FatTable         fatTable;
+  unsigned char*   fatTable;
   char*            diskImageFileName;  
   char*            workingDirectoryPathName;
   char*            sharedMemoryPtr;
@@ -525,15 +527,6 @@ int findUnusedFatEntry(unsigned short* entryNumber);
  *****************************************************************************/
 unsigned short getFatEntryChainLength(unsigned short firstEntryNumber);
 
-/******************************************************************************
- * logicalToPhysicalCluster - Translate a logical cluster number to a physical
- *                            cluster number.
- *
- * entryNumber - logicalCluster
- * 
- * Return - the corresponding physical cluster number
- *****************************************************************************/
-unsigned short logicalToPhysicalCluster(unsigned short logicalCluster);
 
 //-----------------------------------------------------------------------------
 // Global Variables

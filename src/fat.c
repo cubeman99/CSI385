@@ -1,7 +1,7 @@
 /*****************************************************************************
  * Author: David Jordan & Joey Gallahan
  * 
- * Description: TODO
+ * Description: Function definitions for the FAT file system utility functions.
  *
  * Certification of Authenticity:
  * I certify that this assignment is entirely my own work.
@@ -29,10 +29,52 @@ FatFileSystem fatFileSystem;
 // Function Prototypes
 //-----------------------------------------------------------------------------
 
+/******************************************************************************
+ * loadBootSector -load the boot sector into memory.
+ *
+ * Return - Return - 0 on success, -1 on failure
+ *****************************************************************************/
 static int loadBootSector();
+
+/******************************************************************************
+ * readFatTable - read an entire FAT table into memory.
+ *
+ * fatIndex - the index of the FAT table to load (because there are multiple
+ *            FAT tables)  
+ *
+ * Return - a pointer to the FAT table's data. this must be freed with
+ *****************************************************************************/
 static unsigned char* readFatTable(int fatIndex);
+
+/******************************************************************************
+ * writeFatTable - write a FAT table to disk.
+ *
+ * fatIndex - the index of the FAT table to write to
+ * unsigned char* fatTable - the FAT table's data to write to disk
+ *
+ * Return - none
+ *****************************************************************************/
 static void writeFatTable(int fatIndex, unsigned char* fatTable);
+
+/******************************************************************************
+ * freeFatTable - free the allocated memory of a FAT table.
+ *
+ * fatTable - a pointer to the FAT table's data that was allocated with
+ *           readFatTable()
+ *
+ * Return - none
+ *****************************************************************************/
 static void freeFatTable(unsigned char* fatTable);
+
+/******************************************************************************
+ * logicalToPhysicalCluster - Translate a logical cluster number to a physical
+ *                            cluster number.
+ *
+ * entryNumber - logicalCluster
+ * 
+ * Return - the corresponding physical cluster number
+ *****************************************************************************/
+unsigned short logicalToPhysicalCluster(unsigned short logicalCluster);
 
 
 //-----------------------------------------------------------------------------
@@ -332,39 +374,30 @@ int saveDirectory(unsigned short flc, DirectoryEntry* directory)
  *****************************************************************************/
 void organizeDirectory(DirectoryEntry* directory)
 {
-  DirectoryEntry* entry = directory;
-  unsigned short bytesPerSector = fatFileSystem.bootSector.bytesPerSector;
-  unsigned short numSectorsForDir = getFatEntryChainLength(directory->firstLogicalCluster);
+  DirectoryEntry* entry;
+  int isUnused;
+  int index;
+  int scoochAmount = 0;
+  int isEnd = 0;
   
-  int maxNumEntries = ((numSectorsForDir * bytesPerSector) / sizeof(DirectoryEntry)) - 1;
-                 
-  int index = 0;
-  // Find an unused entry in the given directory.
-  while (index < maxNumEntries)
+  for (index = 0; !isEnd; index++)
   {
-    if ((unsigned char) entry->name[0] == DIR_ENTRY_FREE)
-    {
-      // The directory entry is free (i.e., currently unused).
-      break;
-    }
-    else if ((unsigned char) entry->name[0] == DIR_ENTRY_END_OF_ENTRIES)
-    {      
-      // This directory entry is free and all the remaining directory
-      // entries in this directory are also free.
-      (entry + 1)->name[0] = DIR_ENTRY_END_OF_ENTRIES;
-      break;
-    }
+    DirectoryEntry* entry = directory + index;
     
-    entry++;
-    index++;
+    isEnd    = ((unsigned char) entry->name[0] == DIR_ENTRY_END_OF_ENTRIES);
+    isUnused = ((unsigned char) entry->name[0] == DIR_ENTRY_FREE ||
+               entry->attributes == DIR_ENTRY_ATTRIB_LONG_FILE_NAME);
+    
+    if (isUnused)
+    {
+      scoochAmount++;
+    }
+    else if (scoochAmount > 0)
+    {
+       directory[index - scoochAmount] = directory[index];
+       directory[index].name[0] = DIR_ENTRY_END_OF_ENTRIES;
+    }
   }
-  directory = (DirectoryEntry*) realloc(directory, numSectorsForDir * bytesPerSector);
-  int rc = writeFileContents(directory->firstLogicalCluster, (unsigned char*) directory,
-                             numSectorsForDir * bytesPerSector);
-                             
-  if (rc != 0)
-    printf("%d\n", rc);  
-   
 }
 
 /******************************************************************************
@@ -374,16 +407,9 @@ void removeEntry(DirectoryEntry* directory, int index)
 {
   //Get the entry from the parent directory to remove                            
   DirectoryEntry* entryToRemove = directory + index;
-
-  unsigned int flc = entryToRemove->firstLogicalCluster;
-  unsigned short numSectors = getFatEntryChainLength(flc);
-  unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
-           
-  entryToRemove->attributes = 0;
-  entryToRemove->fileSize = 0;
+  
   entryToRemove->name[0] = DIR_ENTRY_FREE;
-  organizeDirectory(directory);
-  freeFileContents(flc);
+  freeFileContents(entryToRemove->firstLogicalCluster);
 }
 
 /******************************************************************************
@@ -856,16 +882,6 @@ unsigned short getFatEntryChainLength(unsigned short firstEntryNumber)
   return length;
 }
 
-/******************************************************************************
- * logicalToPhysicalCluster
- *****************************************************************************/
-unsigned short logicalToPhysicalCluster(unsigned short logicalCluster)
-{
-  if (logicalCluster == 0)
-    return fatFileSystem.sectorOffsets.rootDirectory;
-  else
-    return fatFileSystem.sectorOffsets.dataRegion + logicalCluster - 2;
-}
 
 //-----------------------------------------------------------------------------
 // Internal Functions
@@ -956,5 +972,17 @@ static void freeFatTable(unsigned char* fatTable)
 {
   free(fatTable);
 }
+
+/******************************************************************************
+ * logicalToPhysicalCluster
+ *****************************************************************************/
+unsigned short logicalToPhysicalCluster(unsigned short logicalCluster)
+{
+  if (logicalCluster == 0)
+    return fatFileSystem.sectorOffsets.rootDirectory;
+  else
+    return fatFileSystem.sectorOffsets.dataRegion + logicalCluster - 2;
+}
+
 
 

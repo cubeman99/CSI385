@@ -1,10 +1,10 @@
 /*****************************************************************************
- * rm.c: List information about files.
+ * rm.c: Remove a file.
  *
  * Author: Joey Gallahan
  * 
  * Description: Performs the rm command, which removes a file from the target 
- *              directory. (defaulting to the current working directory).
+ *              directory.
  *
  * Certification of Authenticity:
  * I certify that this assignment is entirely my own work.
@@ -50,7 +50,7 @@ void rmCommand(char* pathName)
   FilePath filePath;
   getWorkingDirectory(&filePath);
   
-  // Locate the parent directory.
+  // Locate the file's parent directory.
   if (changeFilePath(&filePath, pathName, PATH_TYPE_FILE) != 0)
     return;
   
@@ -61,8 +61,9 @@ void rmCommand(char* pathName)
   
   int index = filePath.dirLevels[filePath.depthLevel - 1].indexInParentDirectory;
 	
-	//Remove the file
+	// Remove the file
 	removeEntry(parentDir, index);
+  organizeDirectory(parentDir);
   saveDirectory(flcOfParentDir, parentDir);
 }
 

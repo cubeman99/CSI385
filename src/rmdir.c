@@ -1,5 +1,5 @@
 /*****************************************************************************
- * rmdir.c: List information about files.
+ * rmdir.c: Remove a directory.
  *
  * Author: Joey Gallahan
  * 
@@ -53,25 +53,45 @@ void rmdirCommand(char* pathName)
   if (changeFilePath(&dirPath, pathName, PATH_TYPE_DIRECTORY) != 0)
     return;
   
-  // Open the parent directory.
+  // Make sure we're not trying to removing the root directory.
+  if (dirPath.dirLevels[dirPath.depthLevel - 1].firstLogicalCluster == 0)
+  {
+    printf("Error: Cannot remove the root directory.\n");
+    return;
+  }
+    
+  // Open the directory's parent directory.
   unsigned short flcOfParentDir = dirPath.dirLevels[dirPath.depthLevel - 2]
                                   .firstLogicalCluster;
   DirectoryEntry* parentDir = openDirectory(flcOfParentDir); 
   
   int index = dirPath.dirLevels[dirPath.depthLevel - 1].indexInParentDirectory;
 	
+	// Check if the directory-to-remove is empty.
 	DirectoryEntry* toDelete = openDirectory(parentDir[index].firstLogicalCluster);
-	
-	//Remove the file
-	if (isDirectoryEmpty(toDelete))
+	int isEmpty = isDirectoryEmpty(toDelete);
+  closeDirectory(toDelete);
+  
+  getWorkingDirectory(&dirPath);
+  
+  // Make sure we are not removing the current working directory.
+  if (dirPath.dirLevels[dirPath.depthLevel - 1].firstLogicalCluster == 
+     parentDir[index].firstLogicalCluster)
+  {
+    printf("Error: Cannot remove the current directory.\n");
+  }
+  else  if (!isEmpty)
 	{
-	  removeEntry(parentDir, index);
-    saveDirectory(flcOfParentDir, parentDir);
+    printf("Error: The directory must be empty to delete it.\n");
   }
   else
   {
-    printf("Error: The directory must be empty to delete it.\n");
-    return;
+    // Remove the directory.
+	  removeEntry(parentDir, index);
+    organizeDirectory(parentDir);
+    saveDirectory(flcOfParentDir, parentDir);
   }
+  
+  closeDirectory(parentDir);
 }
 
