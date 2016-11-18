@@ -32,29 +32,6 @@ int main(int argc, char* argv[])
   printf("%15u%10u%15u%11.2f\n", totalBlocks, numUsedBlocks,
          numAvailableBlocks, usePercent);  
   
-  int i;
-  /*
-  long int numBytes = strtol(argv[1], NULL, 10);
-  unsigned char* data = (unsigned char*) malloc(numBytes);
-  for (i = 0; i < numBytes; i++)
-    data[i] = '0' + (i % 10);
-  writeFileContents(2, data, (unsigned int) numBytes);
-  free(data);
-  
-  
-  unsigned char* readData;
-  unsigned int readNumBytes;
-  
-  readFileContents(2, &readData, &readNumBytes);
-  printf("readNumBytes = %u bytes (%u sectors)\n", readNumBytes, readNumBytes / 512);
-  
-  for (i = 0; i < readNumBytes; i++)
-    printf("%c", readData[i]);
-  printf("\n");
-
-  free(readData);
-  */
-
   terminateFatFileSystem();
   return 0;
 }
