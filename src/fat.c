@@ -386,8 +386,7 @@ void organizeDirectory(DirectoryEntry* directory)
   directory = (DirectoryEntry*) realloc(directory, numSectorsForDir * bytesPerSector);
   int rc = writeFileContents(directory->firstLogicalCluster, (unsigned char*) directory,
                              numSectorsForDir * bytesPerSector);
-  
-  saveDirectory(directory->firstLogicalCluster, directory);
+                             
   if (rc != 0)
     printf("%d\n", rc);  
    
@@ -398,29 +397,18 @@ void organizeDirectory(DirectoryEntry* directory)
  *****************************************************************************/
 void removeEntry(DirectoryEntry* directory, int index)
 {
-  if (isEntryADirectory(directory) || directory->name[0] == 65)
-  {
-    if (index >= 0)
-    { 
-      //Get the entry from the parent directory to remove                            
-      DirectoryEntry* entryToRemove = directory + index;
-      
-      unsigned int flc = entryToRemove->firstLogicalCluster;
-      unsigned short numSectors = getFatEntryChainLength(flc);
-      unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
+  //Get the entry from the parent directory to remove                            
+  DirectoryEntry* entryToRemove = directory + index;
+
+  unsigned int flc = entryToRemove->firstLogicalCluster;
+  unsigned short numSectors = getFatEntryChainLength(flc);
+  unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector;
            
-      entryToRemove->attributes = 0;
-      entryToRemove->fileSize = 0;
-      entryToRemove->name[0] = DIR_ENTRY_FREE;
-      saveDirectory(directory->firstLogicalCluster, directory);
-      organizeDirectory(directory);
-      freeFileContents(flc);
-    }
-  }
-  else
-  {
-    printf("Error: Something went wrong. The parent is a file.\n");
-  }
+  entryToRemove->attributes = 0;
+  entryToRemove->fileSize = 0;
+  entryToRemove->name[0] = DIR_ENTRY_FREE;
+  organizeDirectory(directory);
+  freeFileContents(flc);
 }
 
 /******************************************************************************
@@ -801,7 +789,6 @@ int writeFileContents(unsigned short flc, unsigned char* data,
  *****************************************************************************/
 int freeFileContents(unsigned short flc)
 {
-  // TODO: Implement this for the 'rm' and 'rmdir' commands.
   unsigned int numSectors = getFatEntryChainLength(flc);
   unsigned int numBytes = numSectors * fatFileSystem.bootSector.bytesPerSector; 
   setFatEntry(flc, FAT_ENTRY_TYPE_UNUSED);
