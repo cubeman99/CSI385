@@ -19,8 +19,10 @@
 
 #include "fat.h"
 
-
-void listDirectoryContents(DirectoryEntry* directory);
+void listFileInfo(FilePath* filePath);
+void listDirectoryContents(FilePath* filePath);
+void printListHeader();
+void printEntryInfo(DirectoryEntry* entry);
 
 
 int main(int argc, char* argv[])
@@ -36,27 +38,29 @@ int main(int argc, char* argv[])
   }
   
   // Load the working directory.
-  FilePath dirPath;
-  getWorkingDirectory(&dirPath);
+  FilePath filePath;
+  getWorkingDirectory(&filePath);
 
   // If given a path argument, change to that path.
   if (argc == 2)
   {
-    if (changeFilePath(&dirPath, argv[1], PATH_TYPE_DIRECTORY) != 0)
+    if (changeFilePath(&filePath, argv[1], PATH_TYPE_ANY) != 0)
     {
       return -1;
     }
   }
   
-  // Open the directory's data.
-  unsigned short flc = dirPath.dirLevels[dirPath.depthLevel - 1].firstLogicalCluster;
-  DirectoryEntry* directory = openDirectory(flc);
-  
-  // Print the directory's contents.
-  if (directory != NULL)
+  if (filePath.isADirectory)
   {
-    listDirectoryContents(directory);
-    closeDirectory(directory);
+    listDirectoryContents(&filePath);
+  }
+  else if (filePath.depthLevel > 1)
+  {
+    listFileInfo(&filePath);
+  }
+  else
+  {
+    printf("Unknown error with file path.");
   }
   
   terminateFatFileSystem();
@@ -64,31 +68,71 @@ int main(int argc, char* argv[])
 }
 
 
-// ls command
-void listDirectoryContents(DirectoryEntry* directory)
+// ls command with file.
+void listFileInfo(FilePath* filePath)
 {
-  char name[FAT12_MAX_FILE_NAME_LENGTH];
+  // Open the parent directory.
+  unsigned short flcOfParent = filePath->dirLevels[
+    filePath->depthLevel - 2].firstLogicalCluster;
+  DirectoryEntry* parentDir = openDirectory(flcOfParent);
+
+  if (parentDir == NULL)
+    return;
+  
+  // Get the target file in the parent directory.
+  DirectoryEntry* entry = parentDir + filePath->dirLevels[
+    filePath->depthLevel - 1].indexInParentDirectory;
+
+  // Print info about the target file.
+  printListHeader();
+  printEntryInfo(entry);
+
+  closeDirectory(parentDir);
+}
+
+// ls command with directory.
+void listDirectoryContents(FilePath* filePath)
+{
   DirectoryEntry* entry;
   int index = 0;
-  const char* type;
+    
+  // Open the directory's data.
+  unsigned short flc = filePath->dirLevels[
+    filePath->depthLevel - 1].firstLogicalCluster;
+  DirectoryEntry* directory = openDirectory(flc);
+  if (directory == NULL)
+    return;
   
-  printf("Name%-10sType%-10sSize%-10sFLC\n", "", "", "");
-  printf("---------------------------------------------\n");
+  printListHeader();
   
   // Print out info for each entry in the directory.
   for (entry = getFirstValidEntry(directory, &index); entry != NULL;
        entry = getNextValidEntry(entry, &index))
   {
-    getEntryName(entry, name);
-    
-    if (isEntryADirectory(entry))
-      type = "Dir";   
-    else
-      type = "File";
-    
-    printf("%-14s%4s%14d%13d\n", name, type, entry->fileSize,
-           entry->firstLogicalCluster);  
+    printEntryInfo(entry);
   }
+  
+  closeDirectory(directory);
 }
 
+void printListHeader()
+{
+  printf("Name%-10sType%-10sSize%-10sFLC\n", "", "", "");
+  printf("---------------------------------------------\n");
+}
 
+void printEntryInfo(DirectoryEntry* entry)
+{
+  char name[FAT12_MAX_FILE_NAME_LENGTH];
+  const char* type;
+  
+  getEntryName(entry, name);
+
+  if (isEntryADirectory(entry))
+    type = "Dir";   
+  else
+    type = "File";
+
+  printf("%-14s%4s%14d%13d\n", name, type, entry->fileSize,
+         entry->firstLogicalCluster);  
+}
