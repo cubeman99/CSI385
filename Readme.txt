@@ -5,6 +5,8 @@ Course:  CSI-385-02
 Date:    11/17/2016
 Authors: David Jordan & Joey Gallahan
 
+Repository is available at https://github.com/cubeman99/CSI385
+
 -------------------------------------------------------------------------------
 How to build and run:
 

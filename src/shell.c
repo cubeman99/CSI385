@@ -61,7 +61,8 @@ int main(int argc, char** argv)
    
    // Get the path to the directory where this shell executable is located.
    // This is also where the command executables are located.
-   readlink("/proc/self/exe", pathToCommands, sizeof(pathToCommands));
+   strcpy(pathToCommands, argv[0]);   
+   //readlink("/proc/self/exe", pathToCommands, sizeof(pathToCommands));
    char* finalSlash = strrchr(pathToCommands, '/');
    if (finalSlash != NULL)
       finalSlash[1] = '\0';

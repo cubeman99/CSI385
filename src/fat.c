@@ -281,27 +281,30 @@ int changeFilePath(FilePath* filePath, const char* pathName, int pathType)
       path += strlen(token);
 
       // Remove any path redundancies (. and ..) based on matching FLCs.
-      for (i = 0; i < newFilePath.depthLevel - 1; i++)
+      if (newFilePath.isADirectory)
       {
-        if (entry.firstLogicalCluster ==
-            newFilePath.dirLevels[i].firstLogicalCluster)
+        for (i = 0; i < newFilePath.depthLevel - 1; i++)
         {
-          newFilePath.depthLevel = i + 1;
-          dirLevels = &newFilePath.dirLevels[i];
-          
-          if (i > 0)
+          if (entry.firstLogicalCluster ==
+              newFilePath.dirLevels[i].firstLogicalCluster)
           {
-            path = newFilePath.pathName + newFilePath.dirLevels[i + 1]
-                   .offsetInPathName - 1;
-            *path = '\0';
+            newFilePath.depthLevel = i + 1;
+            dirLevels = &newFilePath.dirLevels[i];
+            
+            if (i > 0)
+            {
+              path = newFilePath.pathName + newFilePath.dirLevels[i + 1]
+                     .offsetInPathName - 1;
+              *path = '\0';
+            }
+            else
+            {
+              path = newFilePath.pathName;
+              path[1] = '\0';
+            }
+            
+            break;
           }
-          else
-          {
-            path = newFilePath.pathName;
-            path[1] = '\0';
-          }
-          
-          break;
         }
       }
     }

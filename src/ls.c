@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
   }
   else
   {
-    printf("Unknown error with file path.");
+    printf("Unknown error with file path.\n");
   }
   
   terminateFatFileSystem();
