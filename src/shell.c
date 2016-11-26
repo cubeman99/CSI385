@@ -61,8 +61,7 @@ int main(int argc, char** argv)
    
    // Get the path to the directory where this shell executable is located.
    // This is also where the command executables are located.
-   strcpy(pathToCommands, argv[0]);   
-   //readlink("/proc/self/exe", pathToCommands, sizeof(pathToCommands));
+   strcpy(pathToCommands, argv[0]);
    char* finalSlash = strrchr(pathToCommands, '/');
    if (finalSlash != NULL)
       finalSlash[1] = '\0';
@@ -70,7 +69,17 @@ int main(int argc, char** argv)
    // Create the shared memory.
    key_t key = FAT12_SHARED_MEMORY_KEY;
    fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644 | IPC_CREAT);
+   if (fatFileSystem.sharedMemoryId == -1)
+   {
+     perror("Error creating shared memory segment");
+     return -1;
+   }
    fatFileSystem.sharedMemoryPtr = shmat(fatFileSystem.sharedMemoryId, (void *) 0, 0);
+   if (fatFileSystem.sharedMemoryPtr == (void*) -1)
+   {
+     perror("Error attaching shared memory segment");
+     return -1;
+   }
    fatFileSystem.diskImageFileName = fatFileSystem.sharedMemoryPtr;
    fatFileSystem.workingDirectoryPathName = fatFileSystem.sharedMemoryPtr + 512;
    

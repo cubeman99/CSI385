@@ -88,8 +88,18 @@ int initializeFatFileSystem()
 {
   // Setup the shared memory.
   key_t key = FAT12_SHARED_MEMORY_KEY;
-  fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644 | IPC_CREAT);
+  fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644);
+  if (fatFileSystem.sharedMemoryId == -1)
+  {
+    perror("Error creating shared memory segment");
+    return -1;
+  }
   fatFileSystem.sharedMemoryPtr = shmat(fatFileSystem.sharedMemoryId, (void *) 0, 0);
+  if (fatFileSystem.sharedMemoryPtr == (void*) -1)
+  {
+    perror("Error attaching shared memory segment");
+    return -1;
+  }
   fatFileSystem.diskImageFileName = fatFileSystem.sharedMemoryPtr;
   fatFileSystem.workingDirectoryPathName = fatFileSystem.sharedMemoryPtr + 512;
 
