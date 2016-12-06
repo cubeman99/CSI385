@@ -43,7 +43,7 @@
 #define DIR_ENTRY_ATTRIB_LONG_FILE_NAME  0x0F
 
 // A key to share memory between command processes.
-#define FAT12_SHARED_MEMORY_KEY 888888
+#define FAT12_SHARED_MEMORY_KEY 899862
 
 
 //-----------------------------------------------------------------------------
