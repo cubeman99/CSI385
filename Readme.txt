@@ -1,8 +1,8 @@
 
-FAT12 Project Submission for Peer Review
+FAT12 Project Final Submission
 
 Course:  CSI-385-02
-Date:    11/17/2016
+Date:    12/6/2016
 Authors: David Jordan & Joey Gallahan
 
 Repository is available at https://github.com/cubeman99/CSI385
