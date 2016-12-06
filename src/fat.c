@@ -88,7 +88,7 @@ int initializeFatFileSystem()
 {
   // Setup the shared memory.
   key_t key = FAT12_SHARED_MEMORY_KEY;
-  fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644);
+  fatFileSystem.sharedMemoryId = shmget(key, 1024, 0666);
   if (fatFileSystem.sharedMemoryId == -1)
   {
     perror("Error creating shared memory segment");
@@ -337,6 +337,11 @@ int changeFilePath(FilePath* filePath, const char* pathName, int pathType)
 
   // Success!
   *filePath = newFilePath;
+  
+  // Convert the path name to uppercase.
+  char* c;
+  for (c = filePath->pathName; *c != '\0'; c++)
+    *c = toupper(*c);
   return 0;
 }
 

@@ -68,7 +68,7 @@ int main(int argc, char** argv)
       
    // Create the shared memory.
    key_t key = FAT12_SHARED_MEMORY_KEY;
-   fatFileSystem.sharedMemoryId = shmget(key, 1024, 0644 | IPC_CREAT);
+   fatFileSystem.sharedMemoryId = shmget(key, 1024, 0666 | IPC_CREAT);
    if (fatFileSystem.sharedMemoryId == -1)
    {
      perror("Error creating shared memory segment");
